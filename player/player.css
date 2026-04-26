@@ -1,0 +1,651 @@
+/*
+  ============================================================
+  LuxPlayer — player.css
+  ------------------------------------------------------------
+  Sections:
+    1. CSS Custom Properties (design tokens)
+    2. Reset & base
+    3. Player container
+    4. Video element
+    5. Spinner (buffering)
+    6. Big play button (pre-play overlay)
+    7. Subtitle display
+    8. Control bar (glassmorphism)
+    9. Progress / seek bar
+   10. Bottom row layout
+   11. Buttons
+   12. Volume group
+   13. Time display
+   14. Settings menu
+   15. Fullscreen & PiP states
+   16. Idle cursor hide
+   17. Responsive (mobile)
+  ============================================================
+*/
+
+
+/* ── 1. DESIGN TOKENS ──────────────────────────────────────── */
+:root {
+  /* Brand accent — electric violet */
+  --lux-accent:       #a855f7;
+  --lux-accent-glow:  rgba(168, 85, 247, 0.5);
+
+  /* Glassmorphism palette */
+  --lux-glass-bg:     rgba(10, 10, 15, 0.72);
+  --lux-glass-border: rgba(255, 255, 255, 0.08);
+  --lux-blur:         20px;
+
+  /* Typography */
+  --lux-font:         'Segoe UI', system-ui, -apple-system, sans-serif;
+  --lux-text:         #ffffff;
+  --lux-text-dim:     rgba(255, 255, 255, 0.55);
+
+  /* Sizing */
+  --lux-bar-height:   62px;
+  --lux-radius:       14px;
+  --lux-btn-size:     38px;
+
+  /* Easing */
+  --lux-ease:         cubic-bezier(0.4, 0, 0.2, 1);
+  --lux-fast:         160ms;
+  --lux-medium:       260ms;
+}
+
+
+/* ── 2. RESET & BASE ───────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  font-family: var(--lux-font);
+  color: var(--lux-text);
+}
+
+
+/* ── 3. PLAYER CONTAINER ───────────────────────────────────── */
+.lux-player {
+  position: relative;
+  width: 100%;
+  max-width: 1280px;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: var(--lux-radius);
+  overflow: hidden;
+
+  /* Subtle outer glow */
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.06),
+    0 32px 64px rgba(0, 0, 0, 0.8);
+}
+
+/* When controls are hidden (idle state), hide the cursor over the video */
+.lux-player.lux-idle {
+  cursor: none;
+}
+
+/* Gradient overlay — fades the bottom so controls are readable */
+.lux-player::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to top,
+    rgba(0,0,0,0.72) 0%,
+    transparent 38%
+  );
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity var(--lux-medium) var(--lux-ease);
+}
+
+.lux-player.lux-active::before,
+.lux-player:hover::before,
+.lux-player:focus-within::before {
+  opacity: 1;
+}
+
+
+/* ── 4. VIDEO ELEMENT ──────────────────────────────────────── */
+.lux-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+
+/* ── 5. SPINNER ────────────────────────────────────────────── */
+.lux-spinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--lux-fast) var(--lux-ease);
+}
+
+.lux-spinner.lux-show {
+  opacity: 1;
+}
+
+.lux-spinner svg {
+  width: 52px;
+  height: 52px;
+  animation: lux-spin 0.9s linear infinite;
+}
+
+.lux-spinner circle {
+  stroke: var(--lux-accent);
+  stroke-linecap: round;
+  stroke-dasharray: 80, 200;
+  stroke-dashoffset: 0;
+  animation: lux-dash 1.5s ease-in-out infinite;
+}
+
+@keyframes lux-spin {
+  100% { transform: rotate(360deg); }
+}
+@keyframes lux-dash {
+  0%   { stroke-dasharray: 1, 200;  stroke-dashoffset: 0; }
+  50%  { stroke-dasharray: 100, 200; stroke-dashoffset: -30px; }
+  100% { stroke-dasharray: 100, 200; stroke-dashoffset: -124px; }
+}
+
+
+/* ── 6. BIG PLAY BUTTON ────────────────────────────────────── */
+.lux-big-play {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+  opacity: 1;
+  transition: opacity var(--lux-medium) var(--lux-ease);
+}
+
+.lux-big-play svg {
+  width: 72px;
+  height: 72px;
+  color: rgba(255, 255, 255, 0.92);
+  filter: drop-shadow(0 4px 24px rgba(0,0,0,0.6));
+  background: rgba(168, 85, 247, 0.18);
+  border-radius: 50%;
+  padding: 12px;
+  border: 2px solid rgba(255,255,255,0.18);
+  transition:
+    transform var(--lux-fast) var(--lux-ease),
+    background var(--lux-fast) var(--lux-ease);
+}
+
+.lux-big-play:hover svg,
+.lux-big-play:focus-visible svg {
+  transform: scale(1.08);
+  background: rgba(168, 85, 247, 0.38);
+}
+
+/* Hide once video has started */
+.lux-big-play.lux-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+
+/* ── 7. SUBTITLE DISPLAY ───────────────────────────────────── */
+.lux-subtitle {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--lux-bar-height) + 20px);
+  z-index: 15;
+  text-align: center;
+  max-width: 80%;
+  pointer-events: none;
+
+  /* Text styling — large, readable, drop-shadow for contrast */
+  font-size: clamp(14px, 2.2vw, 22px);
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  color: #ffffff;
+  text-shadow:
+    0 1px 4px rgba(0,0,0,0.9),
+    0 0 12px rgba(0,0,0,0.7);
+
+  /* Pill background for maximum legibility */
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-radius: 6px;
+  padding: 4px 14px;
+
+  /* Hidden when empty */
+  display: none;
+}
+
+.lux-subtitle:not(:empty) {
+  display: block;
+}
+
+
+/* ── 8. CONTROL BAR ────────────────────────────────────────── */
+/*
+  The entire control bar uses CSS glassmorphism:
+    - translucent dark background
+    - backdrop-filter blur
+    - subtle top border that catches ambient light
+*/
+.lux-controls {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  padding: 0 14px 10px;
+  background: var(--lux-glass-bg);
+  backdrop-filter: blur(var(--lux-blur)) saturate(1.6);
+  -webkit-backdrop-filter: blur(var(--lux-blur)) saturate(1.6);
+  border-top: 1px solid var(--lux-glass-border);
+
+  /* Show / hide transition */
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity var(--lux-medium) var(--lux-ease),
+    transform var(--lux-medium) var(--lux-ease);
+  pointer-events: none;
+}
+
+/* Controls visible when player is hovered / active / focused */
+.lux-player:hover .lux-controls,
+.lux-player:focus-within .lux-controls,
+.lux-player.lux-active .lux-controls {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+
+/* ── 9. PROGRESS / SEEK BAR ────────────────────────────────── */
+.lux-progress-wrapper {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  margin-bottom: 8px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.15);
+  cursor: pointer;
+  transition: height var(--lux-fast) var(--lux-ease);
+}
+
+/* Expand on hover for easier grabbing */
+.lux-progress-wrapper:hover {
+  height: 6px;
+}
+
+/* Buffered fill */
+.lux-buffered {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: rgba(255,255,255,0.25);
+  width: 0%;
+  pointer-events: none;
+  transition: width 0.4s linear;
+}
+
+/* Played fill */
+.lux-played {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--lux-accent), #e879f9);
+  box-shadow: 0 0 8px var(--lux-accent-glow);
+  width: 0%;
+  pointer-events: none;
+  transition: width 0.1s linear;
+}
+
+/* Playhead thumb (native range, visually hidden; interaction only) */
+.lux-seek {
+  position: absolute;
+  inset: -6px 0;
+  width: 100%;
+  height: calc(100% + 12px);
+  opacity: 0;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
+/* Seek time tooltip */
+.lux-seek-tooltip {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  transform: translateX(-50%);
+  background: var(--lux-glass-bg);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--lux-glass-border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--lux-fast) var(--lux-ease);
+}
+
+.lux-progress-wrapper:hover .lux-seek-tooltip {
+  opacity: 1;
+}
+
+
+/* ── 10. BOTTOM ROW LAYOUT ─────────────────────────────────── */
+.lux-bottom-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.lux-left,
+.lux-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+
+/* ── 11. BUTTONS ───────────────────────────────────────────── */
+.lux-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--lux-btn-size);
+  height: var(--lux-btn-size);
+  border: none;
+  background: transparent;
+  color: var(--lux-text);
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background var(--lux-fast) var(--lux-ease),
+    color var(--lux-fast) var(--lux-ease),
+    transform var(--lux-fast) var(--lux-ease);
+  flex-shrink: 0;
+  outline: none;
+}
+
+.lux-btn svg {
+  width: 22px;
+  height: 22px;
+  pointer-events: none;
+}
+
+.lux-btn:hover,
+.lux-btn:focus-visible {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.lux-btn:active {
+  transform: scale(0.9);
+}
+
+/* Active / engaged state (CC enabled, etc.) */
+.lux-btn.lux-engaged {
+  color: var(--lux-accent);
+}
+
+/* ── Play/pause icon visibility ── */
+.icon-pause            { display: none; }
+.lux-player.lux-playing .icon-play  { display: none; }
+.lux-player.lux-playing .icon-pause { display: inline-block; }
+
+/* ── Volume icon visibility ── */
+.icon-vol-low  { display: none; }
+.icon-vol-mute { display: none; }
+
+.lux-player.lux-vol-low  .icon-vol-high { display: none; }
+.lux-player.lux-vol-low  .icon-vol-low  { display: inline-block; }
+
+.lux-player.lux-muted .icon-vol-high { display: none; }
+.lux-player.lux-muted .icon-vol-low  { display: none; }
+.lux-player.lux-muted .icon-vol-mute { display: inline-block; }
+
+/* ── Fullscreen icon visibility ── */
+.icon-compress { display: none; }
+.lux-player.lux-fullscreen .icon-expand   { display: none; }
+.lux-player.lux-fullscreen .icon-compress { display: inline-block; }
+
+
+/* ── 12. VOLUME GROUP ──────────────────────────────────────── */
+.lux-volume-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lux-volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 80px;
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.2);
+  cursor: pointer;
+  outline: none;
+  /* Filled part via JS-driven inline style on the element */
+}
+
+/* Custom thumb */
+.lux-volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 6px rgba(0,0,0,0.5);
+  cursor: pointer;
+  transition: transform var(--lux-fast) var(--lux-ease);
+}
+
+.lux-volume-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  cursor: pointer;
+}
+
+.lux-volume-slider:hover::-webkit-slider-thumb {
+  transform: scale(1.2);
+}
+
+/* Hide volume slider on narrow screens (collapse to just mute icon) */
+@media (max-width: 480px) {
+  .lux-volume-slider { display: none; }
+}
+
+
+/* ── 13. TIME DISPLAY ──────────────────────────────────────── */
+.lux-time {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--lux-text);
+  white-space: nowrap;
+  letter-spacing: 0.03em;
+  user-select: none;
+  padding: 0 4px;
+}
+
+.lux-time-sep {
+  margin: 0 4px;
+  color: var(--lux-text-dim);
+}
+
+
+/* ── 14. SETTINGS MENU ─────────────────────────────────────── */
+.lux-settings-wrapper {
+  position: relative;
+}
+
+.lux-settings-menu {
+  position: absolute;
+  bottom: calc(var(--lux-btn-size) + 10px);
+  right: 0;
+  min-width: 148px;
+  background: var(--lux-glass-bg);
+  backdrop-filter: blur(var(--lux-blur));
+  -webkit-backdrop-filter: blur(var(--lux-blur));
+  border: 1px solid var(--lux-glass-border);
+  border-radius: 12px;
+  padding: 10px 8px;
+  z-index: 30;
+
+  /* Entrance animation */
+  transform-origin: bottom right;
+  animation: lux-menu-in var(--lux-fast) var(--lux-ease);
+}
+
+@keyframes lux-menu-in {
+  from { opacity: 0; transform: scale(0.92) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.lux-menu-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--lux-text-dim);
+  padding: 0 8px 8px;
+}
+
+.lux-speed-btn {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--lux-text);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: var(--lux-font);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background var(--lux-fast) var(--lux-ease);
+}
+
+.lux-speed-btn:hover {
+  background: rgba(255,255,255,0.1);
+}
+
+.lux-speed-btn.lux-active {
+  color: var(--lux-accent);
+  background: rgba(168, 85, 247, 0.12);
+}
+
+
+/* ── 15. FULLSCREEN STATE ──────────────────────────────────── */
+/*
+  When the browser enters fullscreen, :fullscreen matches the
+  root element.  We reset max-width / aspect-ratio so the player
+  fills the entire screen.
+*/
+.lux-player:fullscreen,
+.lux-player:-webkit-full-screen,
+.lux-player:-moz-full-screen {
+  max-width: 100vw;
+  width: 100vw;
+  height: 100vh;
+  aspect-ratio: unset;
+  border-radius: 0;
+}
+
+/* Fullscreen body */
+:fullscreen body {
+  background: #000;
+}
+
+
+/* ── 16. IDLE CURSOR HIDE ──────────────────────────────────── */
+/*
+  Applied by JS after 3 s of inactivity while playing.
+  Controls are also hidden in this state.
+*/
+.lux-player.lux-idle .lux-controls {
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+}
+
+.lux-player.lux-idle .lux-big-play.lux-hidden {
+  /* remain hidden */
+}
+
+
+/* ── 17. RESPONSIVE — MOBILE ───────────────────────────────── */
+@media (max-width: 640px) {
+  :root {
+    --lux-btn-size: 34px;
+    --lux-bar-height: 56px;
+  }
+
+  .lux-big-play svg {
+    width: 56px;
+    height: 56px;
+  }
+
+  /* Always show controls on touch devices (no hover) */
+  .lux-controls {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+
+  .lux-time {
+    font-size: 11px;
+  }
+
+  .lux-subtitle {
+    font-size: clamp(12px, 3.5vw, 16px);
+    max-width: 92%;
+    bottom: calc(var(--lux-bar-height) + 12px);
+  }
+}
+
+@media (max-width: 360px) {
+  /* Hide PiP on very small screens (feature not meaningful) */
+  #lux-pip-btn { display: none; }
+}
