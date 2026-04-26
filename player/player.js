@@ -124,12 +124,23 @@ function initPlayer() {
   }
 
   async function loadSource() {
-    const src = player.dataset.src;
+    /* ── URL parameter takes priority over data-src ──────────────
+       Usage: player/index.html?video=https://example.com/movie.mp4
+              player/index.html?video=https://example.com/live.m3u8
+       If no ?video= param is present, the default data-src is used.
+    ────────────────────────────────────────────────────────────── */
+    const params  = new URLSearchParams(window.location.search);
+    const urlSrc  = params.get('video');
+    const src     = urlSrc ? decodeURIComponent(urlSrc) : player.dataset.src;
+
     if (!src) {
-      console.warn('[LuxPlayer] No data-src on #lux-player.');
+      console.warn('[LuxPlayer] No video source. Add ?video=URL or set data-src.');
       showError('No video source provided.');
       return;
     }
+
+    /* Reflect the active source back onto the element for debugging */
+    if (urlSrc) player.dataset.src = src;
 
     hideError();
     spinner.classList.add('lux-show');
