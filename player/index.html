@@ -3,120 +3,108 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>LuxPlayer</title>
+  <title>LuxPlayer — Red Edition</title>
 
   <!--
     ============================================================
-    LuxPlayer — index.html
+    LuxPlayer — index.html  (Red Edition)
     ------------------------------------------------------------
-    Purpose : Shell page that loads hls.js, the player stylesheet,
-              and the player JavaScript module.  Swap out the
-              <source> / data-src attribute below to point at any
-              MP4 or HLS (.m3u8) stream.
+    data-src  : Change this to any MP4 or .m3u8 URL.
+    Subtitle tracks are declared inside <video> via <track> tags.
+    To add/remove languages, edit the <track> elements below.
     ============================================================
   -->
 
-  <!-- Player stylesheet -->
   <link rel="stylesheet" href="player.css" />
 
-  <!--
-    hls.js CDN — lightweight HLS parser that works in every modern
-    browser.  No ad scripts, no trackers — purely functional.
-  -->
+  <!-- hls.js — HLS streaming only. No ads, no trackers. -->
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
 </head>
 <body>
 
-  <!--
-    ============================================================
-    PLAYER WRAPPER
-    ------------------------------------------------------------
-    data-src  : The video URL to load.  Supports:
-                  • Direct MP4   →  "https://example.com/movie.mp4"
-                  • HLS stream   →  "https://example.com/stream.m3u8"
-    ============================================================
-  -->
+  <!-- ══════════════════════════════════════════════════════════
+       PLAYER WRAPPER
+       data-src → your video URL (MP4 or .m3u8)
+       ══════════════════════════════════════════════════════════ -->
   <div
     id="lux-player"
     class="lux-player"
     data-src="https://www.w3schools.com/html/mov_bbb.mp4"
   >
 
-    <!-- ── VIDEO ELEMENT ──────────────────────────────────────── -->
-    <!--
-      crossorigin="anonymous" is required so that WebVTT subtitle
-      tracks fetched from a different origin don't trigger CORS errors.
-    -->
+    <!-- ── VIDEO ──────────────────────────────────────────────── -->
     <video
       id="lux-video"
       class="lux-video"
       crossorigin="anonymous"
       playsinline
-    ></video>
+    >
+      <!--
+        SUBTITLE TRACKS
+        Add one <track> per language. srclang must be a valid BCP-47 code.
+        label is what appears in the Subtitles menu.
+        The JS reads video.textTracks to build the in-player menu — no
+        file picker, no external gallery.
+      -->
+      <track kind="subtitles" label="English"  srclang="en" src="subtitles/en.vtt" />
+      <track kind="subtitles" label="العربية"  srclang="ar" src="subtitles/ar.vtt" />
+      <track kind="subtitles" label="Français"  srclang="fr" src="subtitles/fr.vtt" />
+      <track kind="subtitles" label="Español"   srclang="es" src="subtitles/es.vtt" />
+    </video>
 
-    <!-- ── SUBTITLE DISPLAY ───────────────────────────────────── -->
-    <!--
-      Cue text is injected here by player.js.
-      Positioned above the control bar via CSS.
-    -->
+    <!-- ── SUBTITLE OVERLAY ───────────────────────────────────── -->
     <div id="lux-subtitle" class="lux-subtitle" aria-live="polite"></div>
 
-    <!-- ── SPINNER (buffering indicator) ─────────────────────── -->
+    <!-- ── BUFFERING SPINNER ─────────────────────────────────── -->
     <div id="lux-spinner" class="lux-spinner" aria-hidden="true">
       <svg viewBox="0 0 50 50">
         <circle cx="25" cy="25" r="20" fill="none" stroke-width="4"/>
       </svg>
     </div>
 
-    <!-- ── BIG PLAY BUTTON (shown before first play) ──────────── -->
+    <!-- ── BIG PLAY OVERLAY ───────────────────────────────────── -->
     <button id="lux-big-play" class="lux-big-play" aria-label="Play">
-      <!-- Play triangle -->
       <svg viewBox="0 0 24 24" fill="currentColor">
-        <path d="M8 5v14l11-7z"/>
+        <!-- Solid filled play — bold & high contrast -->
+        <path d="M6 3.765C6 2.266 7.64 1.427 8.864 2.256l12.388 8.235a2 2 0 0 1 0 3.018L8.864 21.744C7.64 22.573 6 21.734 6 20.235V3.765z"/>
       </svg>
     </button>
 
     <!-- ══════════════════════════════════════════════════════════
-         CONTROL BAR  (glassmorphism panel at the bottom)
+         CONTROL BAR (glassmorphism)
          ══════════════════════════════════════════════════════════ -->
     <div id="lux-controls" class="lux-controls" role="toolbar" aria-label="Video controls">
 
-      <!-- ── PROGRESS / SEEK BAR ───────────────────────────── -->
+      <!-- ── SEEK / PROGRESS ───────────────────────────────── -->
       <div class="lux-progress-wrapper" role="group" aria-label="Seek">
-        <!-- Buffered (darker fill behind playhead) -->
-        <div id="lux-buffered" class="lux-buffered"></div>
-        <!-- Playhead fill -->
-        <div id="lux-played"   class="lux-played"></div>
-        <!-- Hidden native range for accessibility & click/drag -->
+        <div id="lux-buffered"      class="lux-buffered"></div>
+        <div id="lux-played"        class="lux-played"></div>
+        <div id="lux-playhead-dot"  class="lux-playhead-dot"></div>
         <input
           id="lux-seek"
           class="lux-seek"
-          type="range"
-          min="0"
-          max="100"
-          value="0"
-          step="0.01"
+          type="range" min="0" max="100" value="0" step="0.01"
           aria-label="Seek"
         />
-        <!-- Floating time tooltip shown on hover -->
         <div id="lux-seek-tooltip" class="lux-seek-tooltip" aria-hidden="true">0:00</div>
       </div>
 
-      <!-- ── BOTTOM ROW ────────────────────────────────────── -->
+      <!-- ── BOTTOM ROW ─────────────────────────────────────── -->
       <div class="lux-bottom-row">
 
-        <!-- Left cluster -->
+        <!-- LEFT CLUSTER -->
         <div class="lux-left">
 
           <!-- Play / Pause -->
           <button id="lux-play-btn" class="lux-btn" aria-label="Play">
-            <!-- Play icon (default) -->
+            <!-- Bold play icon -->
             <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M8 5v14l11-7z"/>
+              <path d="M6 3.765C6 2.266 7.64 1.427 8.864 2.256l12.388 8.235a2 2 0 0 1 0 3.018L8.864 21.744C7.64 22.573 6 21.734 6 20.235V3.765z"/>
             </svg>
-            <!-- Pause icon (shown while playing) -->
+            <!-- Bold pause icon -->
             <svg class="icon-pause" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+              <rect x="5"  y="3" width="4" height="18" rx="1.5"/>
+              <rect x="15" y="3" width="4" height="18" rx="1.5"/>
             </svg>
           </button>
 
@@ -125,26 +113,22 @@
             <button id="lux-mute-btn" class="lux-btn" aria-label="Mute">
               <!-- Volume high -->
               <svg class="icon-vol-high" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77 0-4.28-2.99-7.86-7-8.77z"/>
+                <path d="M11 5 6.5 9H3a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h3.5L11 19V5zm4.536 1.05a1 1 0 0 1 1.352.398A9.97 9.97 0 0 1 18 12a9.97 9.97 0 0 1-1.112 4.552 1 1 0 0 1-1.75-.954A7.97 7.97 0 0 0 16 12a7.97 7.97 0 0 0-.862-3.598 1 1 0 0 1 .398-1.352zm2.669-2.624a1 1 0 0 1 1.38.31A13.95 13.95 0 0 1 21.5 12a13.95 13.95 0 0 1-1.915 7.264 1 1 0 0 1-1.69-1.065A11.95 11.95 0 0 0 19.5 12a11.95 11.95 0 0 0-1.605-6.199 1 1 0 0 1 .31-1.375z"/>
               </svg>
               <!-- Volume low -->
               <svg class="icon-vol-low" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M18.5 12A4.5 4.5 0 0 0 16 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z"/>
+                <path d="M11 5 6.5 9H3a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h3.5L11 19V5zm4.536 1.05a1 1 0 0 1 1.352.398A9.97 9.97 0 0 1 18 12a9.97 9.97 0 0 1-1.112 4.552 1 1 0 0 1-1.75-.954A7.97 7.97 0 0 0 16 12a7.97 7.97 0 0 0-.862-3.598 1 1 0 0 1 .398-1.352z"/>
               </svg>
               <!-- Muted -->
               <svg class="icon-vol-mute" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M16.5 12A4.5 4.5 0 0 0 14 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06A8.99 8.99 0 0 0 17.73 19 L19 17.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+                <path d="M11 5 6.5 9H3a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h3.5L11 19V5z"/>
+                <path d="m22 9-5 5m0-5 5 5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/>
               </svg>
             </button>
-            <!-- Volume slider -->
             <input
               id="lux-volume"
               class="lux-volume-slider"
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value="1"
+              type="range" min="0" max="1" step="0.01" value="1"
               aria-label="Volume"
             />
           </div>
@@ -157,76 +141,92 @@
           </span>
         </div>
 
-        <!-- Right cluster -->
+        <!-- RIGHT CLUSTER -->
         <div class="lux-right">
 
-          <!-- Closed Captions (CC) toggle -->
-          <button id="lux-cc-btn" class="lux-btn" aria-label="Subtitles" aria-pressed="false">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-              <path d="M19 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm-8 7H9.5v-.5h-2v3h2V13H11v1a2 2 0 0 1-4 0v-3a2 2 0 0 1 4 0v1zm7 0h-1.5v-.5h-2v3h2V13H18v1a2 2 0 0 1-4 0v-3a2 2 0 0 1 4 0v1z"/>
-            </svg>
-          </button>
-
-          <!-- Settings (playback speed) -->
-          <div class="lux-settings-wrapper">
-            <button id="lux-settings-btn" class="lux-btn" aria-label="Settings" aria-expanded="false">
-              <svg viewBox="0 0 24 24" fill="currentColor">
-                <path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.0 7.0 0 0 0-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.44.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58a.47.47 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.37 1.03.7 1.62.94l.36 2.54c.03.24.23.41.47.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.57 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61l-2.03-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+          <!-- ── CC / SUBTITLES MENU ──────────────────────── -->
+          <div class="lux-cc-wrapper">
+            <button id="lux-cc-btn" class="lux-btn" aria-label="Subtitles" aria-expanded="false">
+              <!--
+                High-quality CC / subtitle icon — solid speech-bubble style
+                No file picker. Clicking opens the in-player language menu.
+              -->
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="4" width="20" height="14" rx="2"/>
+                <path d="M7 15h4M15 15h2M7 11h2M11 11h6"/>
               </svg>
             </button>
 
-            <!-- Settings popup menu -->
-            <div id="lux-settings-menu" class="lux-settings-menu" role="menu" aria-label="Playback settings" hidden>
-              <p class="lux-menu-label">Playback Speed</p>
-              <!-- Speed options — aria-checked reflects active selection -->
-              <button class="lux-speed-btn"             data-speed="0.5"  role="menuitemradio" aria-checked="false">0.5×</button>
-              <button class="lux-speed-btn lux-active"  data-speed="1"    role="menuitemradio" aria-checked="true" >1×</button>
-              <button class="lux-speed-btn"             data-speed="1.5"  role="menuitemradio" aria-checked="false">1.5×</button>
-              <button class="lux-speed-btn"             data-speed="2"    role="menuitemradio" aria-checked="false">2×</button>
+            <!-- Subtitle language popup — populated from <track> elements -->
+            <div id="lux-cc-menu" class="lux-popup-menu" role="menu" aria-label="Subtitle language" hidden>
+              <p class="lux-menu-label">Subtitles</p>
+              <!-- Items injected by player.js from video.textTracks -->
+            </div>
+          </div>
+
+          <!-- ── SETTINGS MENU (Quality + Speed) ──────────── -->
+          <div class="lux-settings-wrapper">
+            <button id="lux-settings-btn" class="lux-btn" aria-label="Settings" aria-expanded="false">
+              <!--
+                Bold gear icon — clean, modern, high-quality
+              -->
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path fill-rule="evenodd" clip-rule="evenodd"
+                  d="M11.078 2.25c-.917 0-1.699.663-1.85 1.567L9.05 4.889c-.02.12-.115.26-.297.348a7.493 7.493 0 0 0-.986.57c-.166.115-.334.126-.45.083L6.3 5.508a1.875 1.875 0 0 0-2.282.819l-.922 1.597a1.875 1.875 0 0 0 .432 2.385l.84.692c.095.078.17.229.154.43a7.598 7.598 0 0 0 0 1.139c.015.2-.059.352-.153.43l-.841.692a1.875 1.875 0 0 0-.432 2.385l.922 1.597a1.875 1.875 0 0 0 2.282.818l1.019-.382c.115-.043.283-.031.45.082.312.214.641.405.986.57.182.088.277.228.297.35l.178 1.071c.151.904.933 1.567 1.85 1.567h1.844c.916 0 1.699-.663 1.85-1.567l.178-1.072c.02-.12.114-.26.297-.349.344-.165.673-.356.985-.57.167-.114.335-.125.45-.082l1.02.382a1.875 1.875 0 0 0 2.28-.819l.923-1.597a1.875 1.875 0 0 0-.432-2.385l-.84-.692c-.095-.078-.17-.229-.154-.43a7.614 7.614 0 0 0 0-1.139c-.016-.2.059-.352.153-.43l.84-.692c.708-.582.891-1.59.433-2.385l-.922-1.597a1.875 1.875 0 0 0-2.282-.818l-1.02.382c-.114.043-.282.031-.449-.083a7.49 7.49 0 0 0-.985-.57c-.183-.087-.277-.227-.297-.348l-.179-1.072a1.875 1.875 0 0 0-1.85-1.567h-1.843zM12 15.75a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5z"/>
+              </svg>
+            </button>
+
+            <!-- Settings popup -->
+            <div id="lux-settings-menu" class="lux-popup-menu" role="menu" aria-label="Player settings" hidden>
+
+              <!-- Quality section -->
+              <p class="lux-menu-label">Quality</p>
+              <div id="lux-quality-list">
+                <!-- Populated by player.js: HLS levels or static MP4 list -->
+              </div>
+
+              <div class="lux-menu-divider"></div>
+
+              <!-- Speed section -->
+              <p class="lux-menu-label">Speed</p>
+              <button class="lux-menu-item"            data-speed="0.5"  role="menuitemradio" aria-checked="false">0.5×</button>
+              <button class="lux-menu-item lux-active" data-speed="1"    role="menuitemradio" aria-checked="true" >1×</button>
+              <button class="lux-menu-item"            data-speed="1.5"  role="menuitemradio" aria-checked="false">1.5×</button>
+              <button class="lux-menu-item"            data-speed="2"    role="menuitemradio" aria-checked="false">2×</button>
             </div>
           </div>
 
           <!-- Picture-in-Picture -->
           <button id="lux-pip-btn" class="lux-btn" aria-label="Picture in Picture">
             <svg viewBox="0 0 24 24" fill="currentColor">
-              <path d="M19 7h-8v6h8V7zm2-4H3c-1.1 0-2 .9-2 2v14c0 1.1.9 1.98 2 1.98h18c1.1 0 2-.88 2-1.98V5c0-1.1-.9-2-2-2zm0 16.01H3V4.98h18v14.03z"/>
+              <path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14zm-10-7h9v5h-9v-5z"/>
             </svg>
           </button>
 
           <!-- Fullscreen -->
           <button id="lux-fs-btn" class="lux-btn" aria-label="Fullscreen">
-            <!-- Expand icon -->
-            <svg class="icon-expand" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+            <!-- Expand: bold corner arrows -->
+            <svg class="icon-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 3 21 3 21 9"/>
+              <polyline points="9 21 3 21 3 15"/>
+              <line x1="21" y1="3" x2="14" y2="10"/>
+              <line x1="3"  y1="21" x2="10" y2="14"/>
             </svg>
-            <!-- Compress icon (shown in fullscreen) -->
-            <svg class="icon-compress" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>
+            <!-- Compress: bold inner arrows -->
+            <svg class="icon-compress" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="4 14 10 14 10 20"/>
+              <polyline points="20 10 14 10 14 4"/>
+              <line x1="10" y1="14" x2="3"  y2="21"/>
+              <line x1="14" y1="10" x2="21" y2="3"/>
             </svg>
           </button>
-        </div>
+
+        </div><!-- /.lux-right -->
       </div><!-- /.lux-bottom-row -->
     </div><!-- /#lux-controls -->
   </div><!-- /#lux-player -->
 
-  <!--
-    ============================================================
-    SUBTITLE FILE INPUT
-    ------------------------------------------------------------
-    Hidden file input; triggered by the CC button.
-    Users browse for a local .vtt file which is read via
-    FileReader and loaded as an object-URL text track.
-    ============================================================
-  -->
-  <input
-    id="lux-vtt-input"
-    type="file"
-    accept=".vtt,text/vtt"
-    style="display:none"
-    aria-hidden="true"
-  />
-
-  <!-- Player JavaScript module -->
+  <!-- Player script — no external trackers, no ads -->
   <script src="player.js"></script>
 </body>
 </html>

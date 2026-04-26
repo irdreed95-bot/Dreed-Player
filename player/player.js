@@ -1,126 +1,107 @@
 /**
  * ============================================================
- * LuxPlayer — player.js
+ * LuxPlayer — player.js  (Red Edition)
  * ------------------------------------------------------------
- * A premium, ad-free video player with HLS support, custom
- * controls, subtitle rendering, and keyboard shortcuts.
+ * Features:
+ *   • HLS (.m3u8) streaming via hls.js with live quality detection
+ *   • MP4 / WebM / Ogg direct playback with static quality list
+ *   • Play/Pause, Volume, Seek, Time, Fullscreen, PiP
+ *   • In-player Subtitle menu built from <track> elements
+ *   • Quality menu: HLS levels auto-detected / MP4 static list
+ *   • Playback Speed: 0.5×, 1×, 1.5×, 2×
+ *   • Keyboard shortcuts (Space, ← → ↑ ↓, M, F, P, C)
+ *   • Auto-hide controls after 3 s of inactivity
+ *   • No ads, no trackers, no external analytics
  *
- * Dependencies (loaded via CDN in index.html):
- *   • hls.js  — HLS / .m3u8 streaming
- *
- * No frameworks, no trackers, no ads.
- * ============================================================
- *
- * HOW TO EMBED IN YOUR OWN PAGE
- * ──────────────────────────────
- * 1. Copy index.html, player.css, player.js to your server.
- * 2. Change data-src on #lux-player to your video URL.
- * 3. Load the three files in your <head>/<body>.
- * 4. (Optional) Change --lux-accent in player.css to match
- *    your brand colour.
+ * Dependencies: hls.js (CDN, see index.html)
  * ============================================================
  */
 
 'use strict';
 
-/* ── ENTRY POINT ────────────────────────────────────────────── */
-// Wait for the DOM to be ready before querying elements.
-document.addEventListener('DOMContentLoaded', () => {
-  initPlayer();
-});
+document.addEventListener('DOMContentLoaded', initPlayer);
 
 
 /* ══════════════════════════════════════════════════════════════
-   INITIALISE PLAYER
+   INIT
    ══════════════════════════════════════════════════════════════ */
 function initPlayer() {
 
-  /* ── DOM REFERENCES ─────────────────────────────────────── */
-  const player    = document.getElementById('lux-player');
-  const video     = document.getElementById('lux-video');
-  const spinner   = document.getElementById('lux-spinner');
-  const bigPlay   = document.getElementById('lux-big-play');
-  const subtitle  = document.getElementById('lux-subtitle');
+  /* ── DOM ──────────────────────────────────────────────────── */
+  const player      = document.getElementById('lux-player');
+  const video       = document.getElementById('lux-video');
+  const spinner     = document.getElementById('lux-spinner');
+  const bigPlay     = document.getElementById('lux-big-play');
+  const subtitle    = document.getElementById('lux-subtitle');
 
-  // Controls
-  const playBtn    = document.getElementById('lux-play-btn');
-  const muteBtn    = document.getElementById('lux-mute-btn');
-  const volSlider  = document.getElementById('lux-volume');
-  const seekBar    = document.getElementById('lux-seek');
-  const played     = document.getElementById('lux-played');
-  const buffered   = document.getElementById('lux-buffered');
-  const seekTip    = document.getElementById('lux-seek-tooltip');
-  const currentEl  = document.getElementById('lux-current');
-  const durationEl = document.getElementById('lux-duration');
-  const ccBtn      = document.getElementById('lux-cc-btn');
-  const settBtn    = document.getElementById('lux-settings-btn');
-  const settMenu   = document.getElementById('lux-settings-menu');
-  const pipBtn     = document.getElementById('lux-pip-btn');
-  const fsBtn      = document.getElementById('lux-fs-btn');
-  const vttInput   = document.getElementById('lux-vtt-input');
-  const speedBtns  = document.querySelectorAll('.lux-speed-btn');
+  const playBtn     = document.getElementById('lux-play-btn');
+  const muteBtn     = document.getElementById('lux-mute-btn');
+  const volSlider   = document.getElementById('lux-volume');
+  const seekBar     = document.getElementById('lux-seek');
+  const playedEl    = document.getElementById('lux-played');
+  const bufferedEl  = document.getElementById('lux-buffered');
+  const dotEl       = document.getElementById('lux-playhead-dot');
+  const seekTip     = document.getElementById('lux-seek-tooltip');
+  const currentEl   = document.getElementById('lux-current');
+  const durationEl  = document.getElementById('lux-duration');
+
+  const ccBtn       = document.getElementById('lux-cc-btn');
+  const ccMenu      = document.getElementById('lux-cc-menu');
+
+  const settBtn     = document.getElementById('lux-settings-btn');
+  const settMenu    = document.getElementById('lux-settings-menu');
+  const qualityList = document.getElementById('lux-quality-list');
+  const speedBtns   = settMenu.querySelectorAll('[data-speed]');
+
+  const pipBtn      = document.getElementById('lux-pip-btn');
+  const fsBtn       = document.getElementById('lux-fs-btn');
 
 
-  /* ── PLAYER STATE ──────────────────────────────────────── */
-  let hlsInstance    = null;   // hls.js instance (if used)
-  let ccEnabled      = false;  // subtitle toggle
-  let vttObjectUrl   = null;   // revokable object URL for loaded .vtt
-  let activeCueIndex = -1;     // last rendered cue index
-  let idleTimer      = null;   // timer ID for auto-hiding controls
-  let lastVolume     = 1;      // volume before muting (for unmute restore)
+  /* ── STATE ────────────────────────────────────────────────── */
+  let hlsInstance   = null;
+  let idleTimer     = null;
+  let lastVolume    = 1;
+  let activeTrack   = null;   // currently active TextTrack or null
 
 
   /* ══════════════════════════════════════════════════════════
-     1. LOAD VIDEO SOURCE
+     1. VIDEO SOURCE LOADING
      ══════════════════════════════════════════════════════════ */
 
-  /**
-   * Reads data-src from the player wrapper, then selects the
-   * appropriate loading strategy:
-   *   • HLS (.m3u8) : use hls.js if native HLS is unavailable
-   *   • Everything else (MP4, WebM …) : set src directly
-   */
   function loadSource() {
     const src = player.dataset.src;
-    if (!src) {
-      console.warn('[LuxPlayer] No data-src found on #lux-player.');
-      return;
-    }
+    if (!src) { console.warn('[LuxPlayer] No data-src on #lux-player.'); return; }
 
     const isHLS = src.includes('.m3u8');
 
-    if (isHLS) {
-      if (typeof Hls === 'undefined') {
-        // hls.js not loaded — fall back to native (Safari supports HLS natively)
-        console.warn('[LuxPlayer] hls.js not available, falling back to native HLS.');
-        video.src = src;
-        return;
-      }
+    if (isHLS && typeof Hls !== 'undefined' && Hls.isSupported()) {
+      /* ── hls.js path ── */
+      hlsInstance = new Hls({
+        startLevel: -1,              // auto quality
+        capLevelToPlayerSize: true,
+        maxBufferLength: 30,
+      });
+      hlsInstance.loadSource(src);
+      hlsInstance.attachMedia(video);
 
-      if (Hls.isSupported()) {
-        // hls.js path (Chrome, Firefox, Edge, etc.)
-        hlsInstance = new Hls({
-          startLevel: -1,          // auto quality selection
-          capLevelToPlayerSize: true,
-          maxBufferLength: 30,
-        });
-        hlsInstance.loadSource(src);
-        hlsInstance.attachMedia(video);
+      /* Populate quality menu once manifest is parsed */
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, (_e, data) => {
+        buildHLSQualityMenu(data.levels);
+      });
 
-        hlsInstance.on(Hls.Events.ERROR, (_event, data) => {
-          if (data.fatal) {
-            console.error('[LuxPlayer] HLS fatal error:', data.type, data.details);
-          }
-        });
-      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        // Native HLS path (Safari / iOS)
-        video.src = src;
-      } else {
-        console.error('[LuxPlayer] HLS is not supported in this browser.');
-      }
-    } else {
-      // Non-HLS: plain MP4, WebM, Ogg, etc.
+      hlsInstance.on(Hls.Events.ERROR, (_e, data) => {
+        if (data.fatal) console.error('[LuxPlayer] HLS fatal:', data.type, data.details);
+      });
+
+    } else if (isHLS && video.canPlayType('application/vnd.apple.mpegurl')) {
+      /* ── Native HLS (Safari / iOS) ── */
       video.src = src;
+      buildStaticQualityMenu(); // no hls.js level data available
+
+    } else {
+      /* ── Plain MP4 / WebM / Ogg ── */
+      video.src = src;
+      buildStaticQualityMenu();
     }
   }
 
@@ -131,41 +112,19 @@ function initPlayer() {
      2. PLAY / PAUSE
      ══════════════════════════════════════════════════════════ */
 
-  /** Toggle play/pause. */
   function togglePlay() {
-    if (video.paused || video.ended) {
-      video.play();
-    } else {
-      video.pause();
-    }
+    if (video.paused || video.ended) { video.play(); }
+    else { video.pause(); }
   }
 
-  // Big-play overlay
-  bigPlay.addEventListener('click', () => {
-    togglePlay();
-    bigPlay.classList.add('lux-hidden'); // hide overlay after first click
-  });
+  bigPlay.addEventListener('click',  () => { togglePlay(); bigPlay.classList.add('lux-hidden'); });
+  playBtn.addEventListener('click',  togglePlay);
+  video.addEventListener('click',    togglePlay);
 
-  // Play/pause button in controls
-  playBtn.addEventListener('click', togglePlay);
-
-  // Click on the video itself (outside controls)
-  video.addEventListener('click', togglePlay);
-
-  // Sync player class so CSS can swap icons
-  video.addEventListener('play', () => {
-    player.classList.add('lux-playing');
-    resetIdleTimer();
-  });
-
-  video.addEventListener('pause', () => {
-    player.classList.remove('lux-playing');
-    clearIdleTimer();
-  });
-
+  video.addEventListener('play',  () => { player.classList.add('lux-playing');    resetIdleTimer(); });
+  video.addEventListener('pause', () => { player.classList.remove('lux-playing'); clearIdleTimer(); });
   video.addEventListener('ended', () => {
     player.classList.remove('lux-playing');
-    // Re-show big play button (optional UX)
     bigPlay.classList.remove('lux-hidden');
     clearIdleTimer();
   });
@@ -184,55 +143,46 @@ function initPlayer() {
      4. SEEK BAR & PROGRESS
      ══════════════════════════════════════════════════════════ */
 
-  /** Format seconds → "m:ss" or "h:mm:ss" */
-  function formatTime(secs) {
-    if (isNaN(secs) || secs < 0) return '0:00';
-    const h = Math.floor(secs / 3600);
-    const m = Math.floor((secs % 3600) / 60);
-    const s = Math.floor(secs % 60);
-    const ss = String(s).padStart(2, '0');
-    if (h > 0) {
-      const mm = String(m).padStart(2, '0');
-      return `${h}:${mm}:${ss}`;
-    }
+  function formatTime(s) {
+    if (isNaN(s) || s < 0) return '0:00';
+    const h  = Math.floor(s / 3600);
+    const m  = Math.floor((s % 3600) / 60);
+    const ss = String(Math.floor(s % 60)).padStart(2, '0');
+    if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${ss}`;
     return `${m}:${ss}`;
   }
 
-  // Update play-head fill and time display on every tick
   video.addEventListener('timeupdate', () => {
     const pct = video.duration ? (video.currentTime / video.duration) * 100 : 0;
-    played.style.width = `${pct}%`;
-    seekBar.value = pct;
+    playedEl.style.width  = `${pct}%`;
+    dotEl.style.left      = `${pct}%`;
+    seekBar.value         = pct;
     currentEl.textContent = formatTime(video.currentTime);
+    renderActiveCue();
   });
 
-  // Update total duration label
   video.addEventListener('loadedmetadata', () => {
     durationEl.textContent = formatTime(video.duration);
-    seekBar.max = 100;
   });
 
-  // Update buffered fill
   video.addEventListener('progress', () => {
     if (video.duration && video.buffered.length) {
-      const bufPct = (video.buffered.end(video.buffered.length - 1) / video.duration) * 100;
-      buffered.style.width = `${bufPct}%`;
+      bufferedEl.style.width =
+        `${(video.buffered.end(video.buffered.length - 1) / video.duration) * 100}%`;
     }
   });
 
-  // Scrubbing via the hidden range input
   seekBar.addEventListener('input', () => {
-    if (video.duration) {
-      video.currentTime = (seekBar.value / 100) * video.duration;
-    }
+    if (video.duration) video.currentTime = (seekBar.value / 100) * video.duration;
   });
 
-  // Hover tooltip — show time at cursor position
-  seekBar.addEventListener('mousemove', (e) => {
-    const rect = seekBar.getBoundingClientRect();
+  /* Seek tooltip */
+  const progressWrapper = seekBar.closest('.lux-progress-wrapper');
+  progressWrapper.addEventListener('mousemove', (e) => {
+    const rect  = progressWrapper.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     seekTip.textContent = formatTime(ratio * (video.duration || 0));
-    seekTip.style.left = `${ratio * 100}%`;
+    seekTip.style.left  = `${ratio * 100}%`;
   });
 
 
@@ -240,175 +190,258 @@ function initPlayer() {
      5. VOLUME & MUTE
      ══════════════════════════════════════════════════════════ */
 
-  /** Refresh volume slider gradient (filled portion). */
   function updateVolumeUI() {
     const pct = (video.muted ? 0 : video.volume) * 100;
-    // CSS gradient trick for the filled track
     volSlider.style.background =
-      `linear-gradient(to right, #fff ${pct}%, rgba(255,255,255,0.2) ${pct}%)`;
+      `linear-gradient(to right, var(--lux-accent) ${pct}%, rgba(255,255,255,0.18) ${pct}%)`;
 
-    // Swap icon classes on player element (CSS handles which SVG shows)
-    player.classList.toggle('lux-muted', video.muted || video.volume === 0);
+    player.classList.toggle('lux-muted',   video.muted || video.volume === 0);
     player.classList.toggle('lux-vol-low', !video.muted && video.volume > 0 && video.volume < 0.5);
   }
 
   muteBtn.addEventListener('click', () => {
     if (video.muted || video.volume === 0) {
-      // Unmute — restore last volume
-      video.muted = false;
+      video.muted  = false;
       video.volume = lastVolume || 0.7;
       volSlider.value = video.volume;
     } else {
-      lastVolume = video.volume;
-      video.muted = true;
+      lastVolume   = video.volume;
+      video.muted  = true;
     }
     updateVolumeUI();
   });
 
   volSlider.addEventListener('input', () => {
-    const v = parseFloat(volSlider.value);
+    const v      = parseFloat(volSlider.value);
     video.volume = v;
     video.muted  = (v === 0);
     if (v > 0) lastVolume = v;
     updateVolumeUI();
   });
 
-  // Initialise gradient on load
   updateVolumeUI();
 
 
   /* ══════════════════════════════════════════════════════════
-     6. CLOSED CAPTIONS / SUBTITLES
+     6. SUBTITLE MENU (in-player, no file picker)
      ══════════════════════════════════════════════════════════ */
 
   /**
-   * CC button behaviour:
-   *   - If a .vtt track is already loaded → toggle display on/off
-   *   - If no track is loaded → open the file picker
+   * Build the subtitle language menu from <track> elements
+   * already declared in the HTML. The first option is always
+   * "Off". No file system dialog is ever opened.
    */
-  ccBtn.addEventListener('click', () => {
-    const track = video.textTracks[0];
+  function buildSubtitleMenu() {
+    /* "Off" option — always first */
+    const offBtn = makeMenuItem('Off', true);
+    offBtn.dataset.trackIndex = '-1';
+    ccMenu.appendChild(offBtn);
 
-    if (!track) {
-      // No track yet — prompt the user to load one
-      vttInput.click();
-      return;
+    const tracks = video.textTracks;
+    for (let i = 0; i < tracks.length; i++) {
+      const track = tracks[i];
+      if (track.kind !== 'subtitles' && track.kind !== 'captions') continue;
+
+      const btn = makeMenuItem(track.label || track.language);
+      btn.dataset.trackIndex = String(i);
+      ccMenu.appendChild(btn);
     }
 
-    // Toggle
-    ccEnabled = !ccEnabled;
-    track.mode = ccEnabled ? 'showing' : 'hidden';
-    ccBtn.classList.toggle('lux-engaged', ccEnabled);
-    ccBtn.setAttribute('aria-pressed', ccEnabled);
-    if (!ccEnabled) subtitle.textContent = '';
+    /* Ensure all tracks start hidden (we render cues manually) */
+    for (let i = 0; i < tracks.length; i++) {
+      tracks[i].mode = 'hidden';
+    }
+  }
+
+  function makeMenuItem(label, isActive = false) {
+    const btn = document.createElement('button');
+    btn.className   = 'lux-menu-item' + (isActive ? ' lux-active' : '');
+    btn.textContent = label;
+    btn.setAttribute('role', 'menuitemradio');
+    btn.setAttribute('aria-checked', isActive ? 'true' : 'false');
+    return btn;
+  }
+
+  /* Populate the menu as soon as the DOM is ready */
+  buildSubtitleMenu();
+
+  /* CC button — toggle the subtitle popup (never opens file picker) */
+  ccBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = !ccMenu.hidden;
+    ccMenu.hidden = isOpen;
+    settMenu.hidden = true; /* close the other popup */
+    ccBtn.setAttribute('aria-expanded', !isOpen);
+    settBtn.setAttribute('aria-expanded', 'false');
+  });
+
+  /* Handle language selection inside the CC menu */
+  ccMenu.addEventListener('click', (e) => {
+    const btn = e.target.closest('.lux-menu-item');
+    if (!btn) return;
+
+    const idx = parseInt(btn.dataset.trackIndex, 10);
+    selectSubtitleTrack(idx);
+
+    /* Update active state in menu */
+    ccMenu.querySelectorAll('.lux-menu-item').forEach(b => {
+      b.classList.remove('lux-active');
+      b.setAttribute('aria-checked', 'false');
+    });
+    btn.classList.add('lux-active');
+    btn.setAttribute('aria-checked', 'true');
+
+    ccMenu.hidden = true;
+    ccBtn.setAttribute('aria-expanded', 'false');
   });
 
   /**
-   * Handle .vtt file selected by the user.
-   * Creates a Blob object URL, appends a <track> element, and
-   * starts cue rendering via a timeupdate listener.
+   * Activate a subtitle track by index.
+   * index === -1 means "Off".
+   * All other tracks are set to mode:'hidden' (we render cues manually).
    */
-  vttInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  function selectSubtitleTrack(index) {
+    const tracks = video.textTracks;
+    activeTrack  = null;
+    subtitle.textContent = '';
 
-    // Revoke any previously created object URL to avoid memory leaks
-    if (vttObjectUrl) {
-      URL.revokeObjectURL(vttObjectUrl);
-      // Remove old tracks
-      Array.from(video.querySelectorAll('track')).forEach(t => t.remove());
+    for (let i = 0; i < tracks.length; i++) {
+      tracks[i].mode = 'hidden';
     }
 
-    vttObjectUrl = URL.createObjectURL(file);
+    if (index >= 0 && index < tracks.length) {
+      tracks[index].mode = 'hidden'; // keep hidden; we render manually
+      activeTrack        = tracks[index];
+      ccBtn.classList.add('lux-engaged');
+    } else {
+      ccBtn.classList.remove('lux-engaged');
+    }
 
-    const trackEl = document.createElement('track');
-    trackEl.kind    = 'subtitles';
-    trackEl.label   = 'Custom Subtitles';
-    trackEl.default = true;
-    trackEl.src     = vttObjectUrl;
-    video.appendChild(trackEl);
-
-    // Wait for the track to load cues
-    trackEl.addEventListener('load', () => {
-      const track = video.textTracks[0];
-      if (track) {
-        track.mode = 'hidden'; // We render manually for full styling control
-        ccEnabled  = true;
-        ccBtn.classList.add('lux-engaged');
-        ccBtn.setAttribute('aria-pressed', 'true');
-        activateCueRenderer(track);
-      }
-    });
-
-    // Reset file input so the same file can be re-selected
-    vttInput.value = '';
-  });
+    ccBtn.setAttribute('aria-pressed', index >= 0 ? 'true' : 'false');
+  }
 
   /**
-   * Renders subtitle cues into the custom #lux-subtitle element.
-   * Using mode='hidden' + manual rendering gives us full CSS
-   * control instead of the browser's native unstyled captions.
-   *
-   * @param {TextTrack} track
+   * Called on every timeupdate tick.
+   * Reads cues from the active TextTrack and renders the current one.
    */
-  function activateCueRenderer(track) {
-    video.addEventListener('timeupdate', () => {
-      if (!ccEnabled) return;
+  function renderActiveCue() {
+    if (!activeTrack) { subtitle.textContent = ''; return; }
 
-      const cues = track.cues;
-      if (!cues) return;
+    const cues = activeTrack.cues;
+    if (!cues) { subtitle.textContent = ''; return; }
 
-      let text = '';
-      for (let i = 0; i < cues.length; i++) {
-        const cue = cues[i];
-        if (video.currentTime >= cue.startTime && video.currentTime <= cue.endTime) {
-          // Convert VTTCue text (may contain HTML tags like <i>) to safe HTML
-          text = cue.getCueAsHTML
-            ? cue.getCueAsHTML().textContent // plain text from DocumentFragment
-            : cue.text.replace(/<[^>]+>/g, ''); // strip tags as fallback
-          break;
-        }
+    let text = '';
+    const now = video.currentTime;
+    for (let i = 0; i < cues.length; i++) {
+      const cue = cues[i];
+      if (now >= cue.startTime && now <= cue.endTime) {
+        text = cue.getCueAsHTML
+          ? cue.getCueAsHTML().textContent
+          : cue.text.replace(/<[^>]+>/g, '');
+        break;
       }
-      subtitle.textContent = text;
-    });
+    }
+    subtitle.textContent = text;
   }
 
 
   /* ══════════════════════════════════════════════════════════
-     7. PLAYBACK SPEED
+     7. QUALITY MENU
      ══════════════════════════════════════════════════════════ */
 
-  // Toggle the settings popup
-  settBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const isOpen = !settMenu.hidden;
-    settMenu.hidden = isOpen;
-    settBtn.setAttribute('aria-expanded', !isOpen);
-  });
+  /**
+   * HLS path: populate quality options from hls.js level data.
+   * Each level has { height, bitrate, name } etc.
+   * "Auto" is always available and uses hls.js automatic ABR.
+   */
+  function buildHLSQualityMenu(levels) {
+    qualityList.innerHTML = '';
 
-  // Close menu when clicking elsewhere
-  document.addEventListener('click', (e) => {
-    if (!settMenu.contains(e.target) && e.target !== settBtn) {
-      settMenu.hidden = true;
-      settBtn.setAttribute('aria-expanded', 'false');
-    }
-  });
+    /* Auto (default) */
+    const autoBtn = makeMenuItem('Auto', true);
+    autoBtn.dataset.hlsLevel = '-1';
+    qualityList.appendChild(autoBtn);
 
-  // Apply speed selection
-  speedBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      const speed = parseFloat(btn.dataset.speed);
-      video.playbackRate = speed;
+    /* One button per rendition, highest first */
+    [...levels]
+      .map((lvl, i) => ({ lvl, i }))
+      .sort((a, b) => b.lvl.height - a.lvl.height)
+      .forEach(({ lvl, i }) => {
+        const label = lvl.height ? `${lvl.height}p` : `Level ${i + 1}`;
+        const btn   = makeMenuItem(label);
+        btn.dataset.hlsLevel = String(i);
+        qualityList.appendChild(btn);
+      });
 
-      // Update active visual state and aria
-      speedBtns.forEach(b => {
+    /* Attach selection handler */
+    qualityList.addEventListener('click', (e) => {
+      const btn = e.target.closest('.lux-menu-item');
+      if (!btn || btn.dataset.hlsLevel === undefined) return;
+
+      hlsInstance.nextLevel = parseInt(btn.dataset.hlsLevel, 10);
+
+      qualityList.querySelectorAll('.lux-menu-item').forEach(b => {
         b.classList.remove('lux-active');
         b.setAttribute('aria-checked', 'false');
       });
       btn.classList.add('lux-active');
       btn.setAttribute('aria-checked', 'true');
 
-      // Close menu after selection
+      settMenu.hidden = true;
+      settBtn.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  /**
+   * MP4 / native HLS path: show a static list.
+   * Since we can't switch renditions, these are labelled as
+   * the current quality and the menu reflects what was served.
+   */
+  function buildStaticQualityMenu() {
+    qualityList.innerHTML = '';
+    const labels = ['Auto', '1080p', '720p', '480p', '360p'];
+    labels.forEach((lbl, i) => {
+      const btn = makeMenuItem(lbl, i === 0);
+      btn.dataset.staticQuality = lbl;
+      qualityList.appendChild(btn);
+    });
+
+    qualityList.addEventListener('click', (e) => {
+      const btn = e.target.closest('.lux-menu-item');
+      if (!btn) return;
+      qualityList.querySelectorAll('.lux-menu-item').forEach(b => {
+        b.classList.remove('lux-active');
+        b.setAttribute('aria-checked', 'false');
+      });
+      btn.classList.add('lux-active');
+      btn.setAttribute('aria-checked', 'true');
+      settMenu.hidden = true;
+      settBtn.setAttribute('aria-expanded', 'false');
+      /* Note: quality switching for plain MP4 requires server-side
+         renditions. This menu reflects user preference for embedding. */
+    });
+  }
+
+
+  /* ══════════════════════════════════════════════════════════
+     8. SETTINGS MENU (Speed)
+     ══════════════════════════════════════════════════════════ */
+
+  settBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = !settMenu.hidden;
+    settMenu.hidden = isOpen;
+    ccMenu.hidden   = true;
+    settBtn.setAttribute('aria-expanded', !isOpen);
+    ccBtn.setAttribute('aria-expanded',  'false');
+  });
+
+  speedBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      video.playbackRate = parseFloat(btn.dataset.speed);
+      speedBtns.forEach(b => { b.classList.remove('lux-active'); b.setAttribute('aria-checked', 'false'); });
+      btn.classList.add('lux-active');
+      btn.setAttribute('aria-checked', 'true');
       settMenu.hidden = true;
       settBtn.setAttribute('aria-expanded', 'false');
     });
@@ -416,75 +449,62 @@ function initPlayer() {
 
 
   /* ══════════════════════════════════════════════════════════
-     8. PICTURE-IN-PICTURE
+     9. PICTURE-IN-PICTURE
      ══════════════════════════════════════════════════════════ */
 
   pipBtn.addEventListener('click', async () => {
     try {
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture();
-      } else if (video.requestPictureInPicture) {
-        await video.requestPictureInPicture();
-      }
-    } catch (err) {
-      console.warn('[LuxPlayer] PiP error:', err);
-    }
+      if (document.pictureInPictureElement) await document.exitPictureInPicture();
+      else if (video.requestPictureInPicture) await video.requestPictureInPicture();
+    } catch (err) { console.warn('[LuxPlayer] PiP:', err); }
   });
 
-  // Hide PiP button if browser doesn't support it
-  if (!document.pictureInPictureEnabled) {
-    pipBtn.style.display = 'none';
-  }
+  if (!document.pictureInPictureEnabled) pipBtn.style.display = 'none';
 
 
   /* ══════════════════════════════════════════════════════════
-     9. FULLSCREEN
+     10. FULLSCREEN
      ══════════════════════════════════════════════════════════ */
 
   fsBtn.addEventListener('click', () => {
     if (!document.fullscreenElement) {
-      // Enter fullscreen on the player wrapper (not just the <video>)
-      player.requestFullscreen?.() ||
-      player.webkitRequestFullscreen?.() ||
-      player.mozRequestFullScreen?.();
+      (player.requestFullscreen || player.webkitRequestFullscreen || player.mozRequestFullScreen)
+        ?.call(player);
     } else {
-      document.exitFullscreen?.() ||
-      document.webkitExitFullscreen?.() ||
-      document.mozCancelFullScreen?.();
+      (document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen)
+        ?.call(document);
     }
   });
 
-  // Sync CSS class for icon swap
-  const onFsChange = () => {
-    const inFs = !!(
-      document.fullscreenElement ||
-      document.webkitFullscreenElement ||
-      document.mozFullScreenElement
-    );
+  const syncFullscreen = () => {
+    const inFs = !!(document.fullscreenElement || document.webkitFullscreenElement);
     player.classList.toggle('lux-fullscreen', inFs);
     fsBtn.setAttribute('aria-label', inFs ? 'Exit Fullscreen' : 'Fullscreen');
   };
 
-  document.addEventListener('fullscreenchange',       onFsChange);
-  document.addEventListener('webkitfullscreenchange', onFsChange);
-  document.addEventListener('mozfullscreenchange',    onFsChange);
+  document.addEventListener('fullscreenchange',       syncFullscreen);
+  document.addEventListener('webkitfullscreenchange', syncFullscreen);
+
+  /* Double-click video to toggle fullscreen */
+  video.addEventListener('dblclick', () => fsBtn.click());
 
 
   /* ══════════════════════════════════════════════════════════
-     10. IDLE / CONTROLS AUTO-HIDE
+     11. IDLE TIMER (auto-hide controls)
      ══════════════════════════════════════════════════════════ */
 
-  const IDLE_DELAY = 3000; // ms of inactivity before hiding controls
+  const IDLE_DELAY = 3000;
+
+  function anyMenuOpen() {
+    return !settMenu.hidden || !ccMenu.hidden;
+  }
 
   function resetIdleTimer() {
-    clearIdleTimer();
+    clearTimeout(idleTimer);
     player.classList.remove('lux-idle');
-    // Only auto-hide if the video is playing
     if (!video.paused) {
       idleTimer = setTimeout(() => {
-        // Don't hide if the settings menu is open
-        if (!settMenu.hidden) return;
-        player.classList.add('lux-idle');
+        if (!anyMenuOpen()) player.classList.add('lux-idle');
       }, IDLE_DELAY);
     }
   }
@@ -494,137 +514,91 @@ function initPlayer() {
     player.classList.remove('lux-idle');
   }
 
-  // Any movement within the player resets the idle timer
   player.addEventListener('mousemove',  resetIdleTimer);
   player.addEventListener('touchstart', resetIdleTimer, { passive: true });
   player.addEventListener('keydown',    resetIdleTimer);
-
-  // Always show controls when hovered (also handled via CSS :hover)
   player.addEventListener('mouseenter', clearIdleTimer);
-  player.addEventListener('mouseleave', () => {
-    if (!video.paused) resetIdleTimer();
+  player.addEventListener('mouseleave', () => { if (!video.paused) resetIdleTimer(); });
+
+
+  /* ══════════════════════════════════════════════════════════
+     12. CLOSE MENUS ON OUTSIDE CLICK
+     ══════════════════════════════════════════════════════════ */
+
+  document.addEventListener('click', (e) => {
+    if (!ccMenu.contains(e.target) && e.target !== ccBtn) {
+      ccMenu.hidden = true;
+      ccBtn.setAttribute('aria-expanded', 'false');
+    }
+    if (!settMenu.contains(e.target) && e.target !== settBtn) {
+      settMenu.hidden = true;
+      settBtn.setAttribute('aria-expanded', 'false');
+    }
+    /* Keep controls visible while menus are open */
+    if (anyMenuOpen()) player.classList.add('lux-active');
   });
 
 
   /* ══════════════════════════════════════════════════════════
-     11. KEYBOARD SHORTCUTS
+     13. KEEP CONTROLS VISIBLE WHEN ACTIVE
      ══════════════════════════════════════════════════════════ */
 
-  /**
-   * Keyboard shortcuts (player must be focused or cursor must be
-   * within the player area for these to fire without scrolling the
-   * whole page).
-   *
-   *   Space / K   — Play / Pause
-   *   ← / →       — Seek ±5 s
-   *   ↑ / ↓       — Volume ±10 %
-   *   M           — Mute toggle
-   *   F           — Fullscreen toggle
-   *   P           — Picture-in-Picture toggle
-   *   C           — CC toggle
-   */
-  player.setAttribute('tabindex', '0'); // make player focusable
+  video.addEventListener('play',  () => player.classList.add('lux-active'));
+  video.addEventListener('pause', () => {
+    setTimeout(() => { if (video.paused) player.classList.remove('lux-active'); }, 2000);
+  });
+
+
+  /* ══════════════════════════════════════════════════════════
+     14. KEYBOARD SHORTCUTS
+     ══════════════════════════════════════════════════════════
+     Space / K  — Play / Pause
+     ← / →      — Seek ±5 s
+     ↑ / ↓      — Volume ±10 %
+     M          — Mute toggle
+     F          — Fullscreen
+     P          — PiP
+     C          — CC menu
+  */
+
+  player.setAttribute('tabindex', '0');
 
   player.addEventListener('keydown', (e) => {
-    // Ignore when typing in an input
     if (e.target.tagName === 'INPUT') return;
 
     switch (e.code) {
-      case 'Space':
-      case 'KeyK':
-        e.preventDefault();
-        togglePlay();
-        break;
-
+      case 'Space': case 'KeyK':
+        e.preventDefault(); togglePlay(); break;
       case 'ArrowLeft':
-        e.preventDefault();
-        video.currentTime = Math.max(0, video.currentTime - 5);
-        break;
-
+        e.preventDefault(); video.currentTime = Math.max(0, video.currentTime - 5); break;
       case 'ArrowRight':
-        e.preventDefault();
-        video.currentTime = Math.min(video.duration || Infinity, video.currentTime + 5);
-        break;
-
+        e.preventDefault(); video.currentTime = Math.min(video.duration || Infinity, video.currentTime + 5); break;
       case 'ArrowUp':
         e.preventDefault();
-        video.volume = Math.min(1, video.volume + 0.1);
+        video.volume    = Math.min(1, video.volume + 0.1);
         volSlider.value = video.volume;
-        updateVolumeUI();
-        break;
-
+        updateVolumeUI(); break;
       case 'ArrowDown':
         e.preventDefault();
-        video.volume = Math.max(0, video.volume - 0.1);
+        video.volume    = Math.max(0, video.volume - 0.1);
         volSlider.value = video.volume;
-        updateVolumeUI();
-        break;
-
-      case 'KeyM':
-        muteBtn.click();
-        break;
-
-      case 'KeyF':
-        fsBtn.click();
-        break;
-
-      case 'KeyP':
-        pipBtn.click();
-        break;
-
-      case 'KeyC':
-        ccBtn.click();
-        break;
+        updateVolumeUI(); break;
+      case 'KeyM':  muteBtn.click(); break;
+      case 'KeyF':  fsBtn.click();   break;
+      case 'KeyP':  pipBtn.click();  break;
+      case 'KeyC':  ccBtn.click();   break;
     }
-
     resetIdleTimer();
   });
 
 
   /* ══════════════════════════════════════════════════════════
-     12. DOUBLE-CLICK FULLSCREEN
-     ══════════════════════════════════════════════════════════ */
-
-  video.addEventListener('dblclick', () => {
-    fsBtn.click();
-  });
-
-
-  /* ══════════════════════════════════════════════════════════
-     13. MARK PLAYER ACTIVE (for controls visibility CSS hook)
-     ══════════════════════════════════════════════════════════ */
-
-  /*
-    The .lux-active class is used as a CSS hook so the control bar
-    stays visible while the settings menu is open, regardless of
-    hover state.
-  */
-  settBtn.addEventListener('click', () => {
-    player.classList.add('lux-active');
-  });
-
-  document.addEventListener('click', (e) => {
-    if (!player.contains(e.target)) {
-      player.classList.remove('lux-active');
-    }
-  });
-
-  video.addEventListener('play',  () => player.classList.add('lux-active'));
-  video.addEventListener('pause', () => {
-    // Keep active for a moment so controls don't immediately vanish
-    setTimeout(() => {
-      if (video.paused) player.classList.remove('lux-active');
-    }, 2000);
-  });
-
-
-  /* ══════════════════════════════════════════════════════════
-     INITIALISATION COMPLETE
+     DONE
      ══════════════════════════════════════════════════════════ */
   console.info(
-    '%c LuxPlayer %c loaded ',
-    'background:#a855f7;color:#fff;font-weight:700;border-radius:4px 0 0 4px;padding:2px 6px',
-    'background:#1a1a1a;color:#a855f7;font-weight:700;border-radius:0 4px 4px 0;padding:2px 6px'
+    '%c LuxPlayer %c Red Edition ',
+    'background:#E50914;color:#fff;font-weight:800;border-radius:4px 0 0 4px;padding:2px 8px',
+    'background:#1a0002;color:#E50914;font-weight:700;border-radius:0 4px 4px 0;padding:2px 8px'
   );
 
-} // end initPlayer
+} /* end initPlayer */
