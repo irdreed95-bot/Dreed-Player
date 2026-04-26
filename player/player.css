@@ -1,27 +1,28 @@
 /*
   ============================================================
-  LuxPlayer — player.css  (Red Edition)
+  LuxPlayer — player.css  (Universal / Red Edition)
   ------------------------------------------------------------
-  Accent: #E50914 (Netflix / cinema red)
-  Theme : Dark glassmorphism control bar, bold red highlights
+  Accent  : #E50914  (deep cinema red)
+  Theme   : Pure black + dark glassmorphism + glowing red accents
+  Engine  : Shaka Player (HLS · DASH · MP4 · WebM)
   ------------------------------------------------------------
   Sections:
-    1.  CSS Custom Properties (design tokens)
+    1.  Design tokens
     2.  Reset & base
     3.  Player container
     4.  Video element
     5.  Spinner
     6.  Big play overlay
-    7.  Subtitle overlay
-    8.  Control bar (glassmorphism)
-    9.  Progress / seek bar
-   10.  Bottom row layout
-   11.  Buttons
-   12.  Volume group
-   13.  Time display
-   14.  Popup menus (Settings + CC)
-   15.  Menu items
-   16.  Divider
+    7.  Error overlay  ← NEW
+    8.  Subtitle overlay
+    9.  Control bar (glassmorphism)
+   10.  Progress / seek bar  (glowing red fill)
+   11.  Bottom row layout
+   12.  Buttons
+   13.  Volume group  (red fill)
+   14.  Time display
+   15.  Popup menus (CC + Settings)
+   16.  Menu items
    17.  Fullscreen state
    18.  Idle / cursor-hide
    19.  Responsive (mobile)
@@ -31,23 +32,24 @@
 
 /* ── 1. DESIGN TOKENS ──────────────────────────────────────── */
 :root {
-  /* ── Red Edition accent ── */
+  /* ── Accent — cinema red ── */
   --lux-accent:       #E50914;
-  --lux-accent-dim:   #ff4d4d;
-  --lux-accent-glow:  rgba(229, 9, 20, 0.55);
+  --lux-accent-dim:   #ff3b3b;
+  --lux-accent-glow:  rgba(229, 9, 20, 0.6);
+  --lux-accent-soft:  rgba(229, 9, 20, 0.12);
 
   /* ── Glassmorphism ── */
-  --lux-glass-bg:     rgba(8, 8, 12, 0.78);
-  --lux-glass-border: rgba(255, 255, 255, 0.07);
-  --lux-blur:         24px;
+  --lux-glass-bg:     rgba(6, 4, 6, 0.82);
+  --lux-glass-border: rgba(255, 255, 255, 0.06);
+  --lux-blur:         26px;
 
-  /* ── Typography ── */
+  /* ── Type ── */
   --lux-font:         'Segoe UI', system-ui, -apple-system, sans-serif;
   --lux-text:         #ffffff;
-  --lux-text-dim:     rgba(255, 255, 255, 0.48);
+  --lux-text-dim:     rgba(255, 255, 255, 0.45);
 
   /* ── Sizing ── */
-  --lux-bar-height:   64px;
+  --lux-bar-height:   66px;
   --lux-radius:       14px;
   --lux-btn-size:     40px;
 
@@ -61,14 +63,10 @@
 /* ── 2. RESET & BASE ───────────────────────────────────────── */
 *,
 *::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+*::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  background: #0a0a0a;
+  background: #050505;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -87,33 +85,30 @@ body {
   background: #000;
   border-radius: var(--lux-radius);
   overflow: hidden;
-
-  /* Subtle red-tinged shadow on the outer edge */
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.05),
-    0 0 60px rgba(229, 9, 20, 0.08),
-    0 32px 64px rgba(0, 0, 0, 0.85);
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 0 80px rgba(229, 9, 20, 0.07),
+    0 40px 80px rgba(0, 0, 0, 0.9);
 }
 
 .lux-player.lux-idle { cursor: none; }
 
-/* Bottom gradient so controls are always readable */
+/* Bottom scrim */
 .lux-player::before {
   content: '';
   position: absolute;
   inset: 0;
   background: linear-gradient(
     to top,
-    rgba(0,0,0,0.80) 0%,
-    rgba(0,0,0,0.20) 28%,
-    transparent 48%
+    rgba(0,0,0,0.85) 0%,
+    rgba(0,0,0,0.18) 28%,
+    transparent 50%
   );
   pointer-events: none;
   z-index: 1;
   opacity: 0;
   transition: opacity var(--lux-medium) var(--lux-ease);
 }
-
 .lux-player.lux-active::before,
 .lux-player:hover::before,
 .lux-player:focus-within::before { opacity: 1; }
@@ -144,23 +139,25 @@ body {
 .lux-spinner.lux-show { opacity: 1; }
 
 .lux-spinner svg {
-  width: 56px;
-  height: 56px;
-  animation: lux-spin 0.9s linear infinite;
-  filter: drop-shadow(0 0 12px var(--lux-accent-glow));
+  width: 58px;
+  height: 58px;
+  animation: lux-spin 0.85s linear infinite;
+  /* Glowing red spinner */
+  filter:
+    drop-shadow(0 0 10px var(--lux-accent))
+    drop-shadow(0 0 24px var(--lux-accent-glow));
 }
-
 .lux-spinner circle {
   stroke: var(--lux-accent);
   stroke-linecap: round;
   animation: lux-dash 1.5s ease-in-out infinite;
 }
 
-@keyframes lux-spin { 100% { transform: rotate(360deg); } }
-@keyframes lux-dash {
-  0%   { stroke-dasharray: 1, 200;   stroke-dashoffset: 0; }
+@keyframes lux-spin  { 100% { transform: rotate(360deg); } }
+@keyframes lux-dash  {
+  0%   { stroke-dasharray: 1, 200;   stroke-dashoffset: 0;     }
   50%  { stroke-dasharray: 100, 200; stroke-dashoffset: -30px; }
-  100% { stroke-dasharray: 100, 200; stroke-dashoffset: -124px; }
+  100% { stroke-dasharray: 100, 200; stroke-dashoffset: -124px;}
 }
 
 
@@ -182,35 +179,110 @@ body {
 }
 
 .lux-big-play svg {
-  width: 76px;
-  height: 76px;
+  width: 80px;
+  height: 80px;
   color: #fff;
   background: var(--lux-accent);
   border-radius: 50%;
-  padding: 18px;
+  padding: 20px;
   box-shadow:
-    0 0 0 6px rgba(229, 9, 20, 0.22),
-    0 12px 40px rgba(0, 0, 0, 0.6);
+    0 0 0 8px rgba(229, 9, 20, 0.20),
+    0 0 40px rgba(229, 9, 20, 0.45),
+    0 16px 48px rgba(0, 0, 0, 0.6);
   transition:
     transform var(--lux-fast) var(--lux-ease),
     box-shadow var(--lux-fast) var(--lux-ease);
 }
-
 .lux-big-play:hover svg,
 .lux-big-play:focus-visible svg {
   transform: scale(1.1);
   box-shadow:
-    0 0 0 10px rgba(229, 9, 20, 0.18),
-    0 16px 48px rgba(0, 0, 0, 0.65);
+    0 0 0 14px rgba(229, 9, 20, 0.16),
+    0 0 56px rgba(229, 9, 20, 0.55),
+    0 20px 56px rgba(0, 0, 0, 0.65);
+}
+.lux-big-play.lux-hidden { opacity: 0; pointer-events: none; }
+
+
+/* ── 7. ERROR OVERLAY ──────────────────────────────────────── */
+/*
+  Shown by player.js when Shaka cannot load the source.
+  Full-panel overlay, centered, glassmorphism style.
+*/
+.lux-error {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: rgba(4, 0, 2, 0.88);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  text-align: center;
+  padding: 40px;
+
+  /* Entrance animation */
+  animation: lux-err-in 0.35s var(--lux-ease);
+}
+.lux-error[hidden] { display: none; }
+
+@keyframes lux-err-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
-.lux-big-play.lux-hidden {
-  opacity: 0;
-  pointer-events: none;
+.lux-error-icon {
+  width: 52px;
+  height: 52px;
+  color: var(--lux-accent);
+  /* glowing icon */
+  filter: drop-shadow(0 0 10px var(--lux-accent-glow));
+  margin-bottom: 4px;
 }
 
+.lux-error-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.01em;
+}
 
-/* ── 7. SUBTITLE OVERLAY ───────────────────────────────────── */
+.lux-error-msg {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--lux-text-dim);
+  max-width: 320px;
+  line-height: 1.55;
+}
+
+.lux-error-retry {
+  margin-top: 6px;
+  padding: 10px 28px;
+  background: var(--lux-accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--lux-font);
+  cursor: pointer;
+  letter-spacing: 0.03em;
+  box-shadow: 0 0 24px var(--lux-accent-glow);
+  transition:
+    transform var(--lux-fast) var(--lux-ease),
+    box-shadow var(--lux-fast) var(--lux-ease);
+}
+.lux-error-retry:hover {
+  transform: scale(1.04);
+  box-shadow: 0 0 36px var(--lux-accent-glow);
+}
+.lux-error-retry:active { transform: scale(0.97); }
+
+
+/* ── 8. SUBTITLE OVERLAY ───────────────────────────────────── */
 .lux-subtitle {
   position: absolute;
   left: 50%;
@@ -220,38 +292,34 @@ body {
   text-align: center;
   max-width: 80%;
   pointer-events: none;
-
   font-size: clamp(14px, 2.2vw, 22px);
   font-weight: 500;
-  line-height: 1.55;
+  line-height: 1.6;
   letter-spacing: 0.01em;
-  color: #ffffff;
-  text-shadow: 0 1px 6px rgba(0,0,0,0.95);
-
-  background: rgba(0, 0, 0, 0.68);
+  color: #fff;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.98);
+  background: rgba(0, 0, 0, 0.72);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   border-radius: 6px;
-  padding: 4px 16px 5px;
+  padding: 5px 18px 6px;
   display: none;
 }
 .lux-subtitle:not(:empty) { display: block; }
 
 
-/* ── 8. CONTROL BAR ────────────────────────────────────────── */
+/* ── 9. CONTROL BAR ────────────────────────────────────────── */
 .lux-controls {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
   z-index: 20;
-  padding: 0 16px 12px;
-
+  padding: 0 16px 13px;
   background: var(--lux-glass-bg);
-  backdrop-filter: blur(var(--lux-blur)) saturate(1.8);
-  -webkit-backdrop-filter: blur(var(--lux-blur)) saturate(1.8);
+  backdrop-filter: blur(var(--lux-blur)) saturate(2);
+  -webkit-backdrop-filter: blur(var(--lux-blur)) saturate(2);
   border-top: 1px solid var(--lux-glass-border);
-
   opacity: 0;
   transform: translateY(6px);
   transition:
@@ -259,7 +327,6 @@ body {
     transform var(--lux-medium) var(--lux-ease);
   pointer-events: none;
 }
-
 .lux-player:hover .lux-controls,
 .lux-player:focus-within .lux-controls,
 .lux-player.lux-active .lux-controls {
@@ -269,18 +336,17 @@ body {
 }
 
 
-/* ── 9. PROGRESS / SEEK BAR ────────────────────────────────── */
+/* ── 10. PROGRESS / SEEK BAR ───────────────────────────────── */
 .lux-progress-wrapper {
   position: relative;
   width: 100%;
   height: 4px;
   margin: 10px 0 9px;
   border-radius: 4px;
-  background: rgba(255,255,255,0.14);
+  background: rgba(255, 255, 255, 0.12);
   cursor: pointer;
   transition: height var(--lux-fast) var(--lux-ease);
 }
-
 .lux-progress-wrapper:hover { height: 6px; }
 
 /* Buffered fill */
@@ -289,46 +355,53 @@ body {
   top: 0; left: 0;
   height: 100%;
   border-radius: inherit;
-  background: rgba(255,255,255,0.22);
+  background: rgba(255, 255, 255, 0.20);
   width: 0%;
   pointer-events: none;
   transition: width 0.4s linear;
 }
 
-/* Played fill — red gradient */
+/* Played fill — glowing red */
 .lux-played {
   position: absolute;
   top: 0; left: 0;
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--lux-accent), var(--lux-accent-dim));
-  box-shadow: 0 0 10px var(--lux-accent-glow);
+  /* Multi-layer red glow */
+  box-shadow:
+    0 0 8px  var(--lux-accent),
+    0 0 18px var(--lux-accent-glow),
+    0 0 32px rgba(229, 9, 20, 0.25);
   width: 0%;
   pointer-events: none;
   transition: width 0.1s linear;
 }
 
-/* Playhead dot — red circle at tip of progress fill */
+/* Playhead dot — glowing red orb */
 .lux-playhead-dot {
   position: absolute;
   top: 50%;
+  left: 0%;
   transform: translate(-50%, -50%) scale(0);
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   border-radius: 50%;
   background: var(--lux-accent);
-  box-shadow: 0 0 8px var(--lux-accent-glow);
+  box-shadow:
+    0 0 10px var(--lux-accent),
+    0 0 22px var(--lux-accent-glow);
   pointer-events: none;
-  left: 0%;
   transition:
     transform var(--lux-fast) var(--lux-ease),
     left 0.1s linear;
   z-index: 2;
 }
+.lux-progress-wrapper:hover .lux-playhead-dot {
+  transform: translate(-50%, -50%) scale(1);
+}
 
-.lux-progress-wrapper:hover .lux-playhead-dot { transform: translate(-50%, -50%) scale(1); }
-
-/* Hidden range input for interaction */
+/* Hidden range for interaction */
 .lux-seek {
   position: absolute;
   inset: -8px 0;
@@ -342,45 +415,42 @@ body {
   z-index: 3;
 }
 
-/* Hover tooltip */
+/* Time tooltip */
 .lux-seek-tooltip {
   position: absolute;
   bottom: calc(100% + 12px);
   transform: translateX(-50%);
-  background: var(--lux-glass-bg);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid var(--lux-glass-border);
+  background: rgba(10, 4, 8, 0.92);
+  border: 1px solid rgba(229, 9, 20, 0.25);
   border-radius: 6px;
-  padding: 3px 9px;
+  padding: 3px 10px;
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   white-space: nowrap;
   pointer-events: none;
   opacity: 0;
   transition: opacity var(--lux-fast) var(--lux-ease);
+  box-shadow: 0 0 12px rgba(229, 9, 20, 0.2);
 }
 .lux-progress-wrapper:hover .lux-seek-tooltip { opacity: 1; }
 
 
-/* ── 10. BOTTOM ROW LAYOUT ─────────────────────────────────── */
+/* ── 11. BOTTOM ROW LAYOUT ─────────────────────────────────── */
 .lux-bottom-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 4px;
 }
-
-.lux-left,
-.lux-right {
+.lux-left, .lux-right {
   display: flex;
   align-items: center;
   gap: 2px;
 }
 
 
-/* ── 11. BUTTONS ───────────────────────────────────────────── */
+/* ── 12. BUTTONS ───────────────────────────────────────────── */
 .lux-btn {
   display: inline-flex;
   align-items: center;
@@ -389,101 +459,93 @@ body {
   height: var(--lux-btn-size);
   border: none;
   background: transparent;
-  color: rgba(255,255,255,0.88);
+  color: rgba(255, 255, 255, 0.85);
   border-radius: 8px;
   cursor: pointer;
   transition:
-    background var(--lux-fast) var(--lux-ease),
-    color var(--lux-fast) var(--lux-ease),
-    transform var(--lux-fast) var(--lux-ease);
+    background  var(--lux-fast) var(--lux-ease),
+    color       var(--lux-fast) var(--lux-ease),
+    transform   var(--lux-fast) var(--lux-ease),
+    filter      var(--lux-fast) var(--lux-ease);
   flex-shrink: 0;
   outline: none;
 }
-
-.lux-btn svg {
-  width: 22px;
-  height: 22px;
-  pointer-events: none;
-}
+.lux-btn svg { width: 22px; height: 22px; pointer-events: none; }
 
 .lux-btn:hover,
 .lux-btn:focus-visible {
-  background: rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.08);
   color: #fff;
 }
+.lux-btn:active { transform: scale(0.86); }
 
-.lux-btn:active { transform: scale(0.88); }
+/* Engaged (CC active, etc.) — glowing red */
+.lux-btn.lux-engaged {
+  color: var(--lux-accent);
+  filter: drop-shadow(0 0 6px var(--lux-accent-glow));
+}
+.lux-btn.lux-engaged:hover { background: var(--lux-accent-soft); }
 
-/* Engaged = red accent */
-.lux-btn.lux-engaged { color: var(--lux-accent); }
-.lux-btn.lux-engaged:hover { background: rgba(229, 9, 20, 0.12); }
-
-/* ── Play / Pause icon swap ── */
+/* ── Play / Pause swap ── */
 .icon-pause { display: none; }
 .lux-player.lux-playing .icon-play  { display: none; }
 .lux-player.lux-playing .icon-pause { display: inline-block; }
 
-/* ── Volume icon swap ── */
+/* ── Volume swap ── */
 .icon-vol-low  { display: none; }
 .icon-vol-mute { display: none; }
-
 .lux-player.lux-vol-low  .icon-vol-high { display: none; }
 .lux-player.lux-vol-low  .icon-vol-low  { display: inline-block; }
+.lux-player.lux-muted    .icon-vol-high { display: none; }
+.lux-player.lux-muted    .icon-vol-low  { display: none; }
+.lux-player.lux-muted    .icon-vol-mute { display: inline-block; }
 
-.lux-player.lux-muted .icon-vol-high { display: none; }
-.lux-player.lux-muted .icon-vol-low  { display: none; }
-.lux-player.lux-muted .icon-vol-mute { display: inline-block; }
-
-/* ── Fullscreen icon swap ── */
+/* ── Fullscreen swap ── */
 .icon-compress { display: none; }
 .lux-player.lux-fullscreen .icon-expand   { display: none; }
 .lux-player.lux-fullscreen .icon-compress { display: inline-block; }
 
 
-/* ── 12. VOLUME GROUP ──────────────────────────────────────── */
-.lux-volume-group {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
+/* ── 13. VOLUME GROUP ──────────────────────────────────────── */
+.lux-volume-group { display: flex; align-items: center; gap: 2px; }
 
 .lux-volume-slider {
   -webkit-appearance: none;
   appearance: none;
-  width: 82px;
+  width: 84px;
   height: 4px;
   border-radius: 4px;
-  background: rgba(255,255,255,0.18);
+  /* Red-filled portion set by JS; remainder is dim white */
+  background: rgba(255, 255, 255, 0.16);
   cursor: pointer;
   outline: none;
 }
-
-/* Thumb */
 .lux-volume-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 0 4px rgba(0,0,0,0.5);
+  /* Subtle red inner shadow */
+  box-shadow: 0 0 6px rgba(229, 9, 20, 0.4), 0 0 2px rgba(0,0,0,0.6);
   cursor: pointer;
   transition: transform var(--lux-fast) var(--lux-ease);
 }
 .lux-volume-slider::-moz-range-thumb {
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
   border: none;
   border-radius: 50%;
   background: #fff;
   cursor: pointer;
 }
-.lux-volume-slider:hover::-webkit-slider-thumb { transform: scale(1.25); }
+.lux-volume-slider:hover::-webkit-slider-thumb { transform: scale(1.3); }
 
 @media (max-width: 480px) { .lux-volume-slider { display: none; } }
 
 
-/* ── 13. TIME DISPLAY ──────────────────────────────────────── */
+/* ── 14. TIME DISPLAY ──────────────────────────────────────── */
 .lux-time {
   font-size: 13px;
   font-weight: 600;
@@ -493,107 +555,99 @@ body {
   user-select: none;
   padding: 0 6px;
 }
-.lux-time-sep {
-  margin: 0 4px;
-  color: var(--lux-text-dim);
-  font-weight: 400;
-}
+.lux-time-sep { margin: 0 4px; color: var(--lux-text-dim); font-weight: 400; }
 
 
-/* ── 14. POPUP MENUS (Settings + CC) ───────────────────────── */
-/*
-  Both the CC language menu and the Settings menu share this class.
-  They are positioned absolutely above their trigger button.
-*/
+/* ── 15. POPUP MENUS ───────────────────────────────────────── */
 .lux-cc-wrapper,
-.lux-settings-wrapper {
-  position: relative;
-}
+.lux-settings-wrapper { position: relative; }
 
 .lux-popup-menu {
   position: absolute;
   bottom: calc(var(--lux-btn-size) + 12px);
   right: 0;
-  min-width: 160px;
-  background: var(--lux-glass-bg);
+  min-width: 164px;
+  background: rgba(8, 4, 8, 0.94);
   backdrop-filter: blur(var(--lux-blur));
   -webkit-backdrop-filter: blur(var(--lux-blur));
-  border: 1px solid var(--lux-glass-border);
+  border: 1px solid rgba(229, 9, 20, 0.18);
   border-radius: 12px;
   padding: 10px 8px 8px;
   z-index: 30;
-
-  /* Pop-in animation */
+  /* Subtle red border glow */
+  box-shadow:
+    0 0 0 1px rgba(229, 9, 20, 0.08),
+    0 8px 32px rgba(0, 0, 0, 0.8);
   transform-origin: bottom right;
   animation: lux-popup-in var(--lux-fast) var(--lux-ease);
 }
-
 @keyframes lux-popup-in {
   from { opacity: 0; transform: scale(0.9) translateY(6px); }
   to   { opacity: 1; transform: scale(1)   translateY(0);   }
 }
 
-/* Section heading */
 .lux-menu-label {
-  font-size: 9.5px;
+  font-size: 9px;
   font-weight: 800;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--lux-text-dim);
-  padding: 0 10px 7px;
+  color: var(--lux-accent);
+  padding: 0 10px 6px;
   display: block;
+  /* Label also glows red */
+  text-shadow: 0 0 8px rgba(229, 9, 20, 0.5);
 }
 
-/* Divider between sections inside Settings */
 .lux-menu-divider {
   height: 1px;
-  background: var(--lux-glass-border);
-  margin: 6px 0;
+  background: rgba(229, 9, 20, 0.12);
+  margin: 6px 4px;
 }
 
 
-/* ── 15. MENU ITEMS ────────────────────────────────────────── */
+/* ── 16. MENU ITEMS ────────────────────────────────────────── */
 .lux-menu-item {
   display: block;
   width: 100%;
-  padding: 8px 12px;
+  padding: 8px 12px 8px 18px;
   text-align: left;
   background: transparent;
   border: none;
-  color: var(--lux-text);
+  color: rgba(255, 255, 255, 0.82);
   font-size: 13.5px;
   font-weight: 500;
   font-family: var(--lux-font);
   border-radius: 8px;
   cursor: pointer;
-  transition: background var(--lux-fast) var(--lux-ease);
   position: relative;
+  transition: background var(--lux-fast) var(--lux-ease), color var(--lux-fast) var(--lux-ease);
 }
+.lux-menu-item:hover { background: rgba(255,255,255,0.07); color: #fff; }
 
-.lux-menu-item:hover { background: rgba(255,255,255,0.09); }
-
-/* Active selection — red accent */
+/* Active — red accent with glow */
 .lux-menu-item.lux-active {
   color: var(--lux-accent);
-  background: rgba(229, 9, 20, 0.1);
   font-weight: 700;
+  background: rgba(229, 9, 20, 0.1);
+  text-shadow: 0 0 8px rgba(229, 9, 20, 0.4);
 }
 
-/* Active checkmark dot */
+/* Red dot on the left */
 .lux-menu-item.lux-active::before {
   content: '';
   position: absolute;
-  left: 4px;
+  left: 7px;
   top: 50%;
   transform: translateY(-50%);
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: var(--lux-accent);
+  box-shadow: 0 0 6px var(--lux-accent);
 }
 
 
-/* ── 16. FULLSCREEN ────────────────────────────────────────── */
+/* ── 17. FULLSCREEN ────────────────────────────────────────── */
 .lux-player:fullscreen,
 .lux-player:-webkit-full-screen,
 .lux-player:-moz-full-screen {
@@ -605,7 +659,7 @@ body {
 }
 
 
-/* ── 17. IDLE / CURSOR HIDE ────────────────────────────────── */
+/* ── 18. IDLE / CURSOR HIDE ────────────────────────────────── */
 .lux-player.lux-idle .lux-controls {
   opacity: 0;
   transform: translateY(6px);
@@ -613,23 +667,17 @@ body {
 }
 
 
-/* ── 18. RESPONSIVE — MOBILE ───────────────────────────────── */
+/* ── 19. RESPONSIVE — MOBILE ───────────────────────────────── */
 @media (max-width: 640px) {
-  :root {
-    --lux-btn-size:    34px;
-    --lux-bar-height:  58px;
-  }
+  :root { --lux-btn-size: 34px; --lux-bar-height: 58px; }
 
-  .lux-big-play svg { width: 60px; height: 60px; padding: 14px; }
+  .lux-big-play svg { width: 64px; height: 64px; padding: 16px; }
 
-  /* Touch devices: always show controls */
-  .lux-controls {
-    opacity: 1;
-    transform: translateY(0);
-    pointer-events: auto;
-  }
+  /* Always show controls on touch */
+  .lux-controls { opacity: 1; transform: translateY(0); pointer-events: auto; }
 
   .lux-time       { font-size: 11px; }
+  .lux-popup-menu { min-width: 144px; }
 
   .lux-subtitle {
     font-size: clamp(12px, 3.5vw, 16px);
@@ -637,9 +685,7 @@ body {
     bottom: calc(var(--lux-bar-height) + 10px);
   }
 
-  .lux-popup-menu { min-width: 140px; }
+  .lux-error-title { font-size: 17px; }
 }
 
-@media (max-width: 360px) {
-  #lux-pip-btn { display: none; }
-}
+@media (max-width: 360px) { #lux-pip-btn { display: none; } }
