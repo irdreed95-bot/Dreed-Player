@@ -1,11 +1,11 @@
 /**
- * LuxPlayer — index.js
- * ---------------------
- * Minimal Express server that serves the static player files
- * from the /player directory.
+ * Dreed Player — index.js
+ * ------------------------
+ * Minimal Express server that serves the player files
+ * directly from the root directory.
  *
- * Start: node index.js
- * Default port: 3000 (overridable via PORT env var)
+ * Start : node index.js
+ * Port  : process.env.PORT || 3000
  */
 
 const express = require('express');
@@ -14,15 +14,15 @@ const path    = require('path');
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-/* ── Serve everything inside /player as static assets ── */
-app.use(express.static(path.join(__dirname, 'player')));
+/* Serve everything in the root as static assets */
+app.use(express.static(__dirname));
 
-/* ── Root → player/index.html ── */
+/* Root → index.html */
 app.get('/', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'player', 'index.html'));
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-/* ── Start ── */
+/* Start */
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`LuxPlayer running at http://0.0.0.0:${PORT}`);
+  console.log(`Dreed Player running at http://0.0.0.0:${PORT}`);
 });
