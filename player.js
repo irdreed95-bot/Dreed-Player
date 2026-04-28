@@ -8,6 +8,13 @@
  * URL parameters:
  *   ?video=  URL-encoded link to the video (MP4 or .m3u8)
  *   ?sub=    URL-encoded link to a .vtt subtitle file (optional)
+ *
+ * Proxy waterfall (HLS only):
+ *   1. corsproxy.io
+ *   2. allorigins
+ *   3. cors-anywhere
+ *   Each is tried in order.  FRAG_LOAD_ERROR, LEVEL_LOAD_ERROR,
+ *   MANIFEST_LOAD_ERROR, or any fatal error triggers the switch.
  * ============================================================
  */
 
@@ -30,115 +37,136 @@
     : null;
 
   /* ── STATE ──────────────────────────────────────────────── */
-  let plyrInstance  = null;
-  let hlsInstance   = null;
-  let activeProxy   = 0; /* 0 = primary, 1 = fallback */
+  let plyrInstance = null;
+  let hlsInstance  = null;
+  let proxyIndex   = 0;   /* which proxy we are currently using */
+
 
   /* ══════════════════════════════════════════════════════════
-     CORS PROXY LAYER
+     PROXY WATERFALL
      ──────────────────────────────────────────────────────────
-     WHY a custom pLoader instead of xhrSetup:
-     ─────────────────────────────────────────
-     xhrSetup fires AFTER hls.js has already resolved relative
-     .ts paths using the proxied manifest URL as the base, so
-     "segment001.ts" becomes "https://corsproxy.io/?url=segment001.ts"
-     — completely wrong.
+     Three public CORS proxies.  Each entry defines:
+       name   — label shown in console
+       build  — turns a clean URL into a proxied URL
+       prefix — the string that identifies an already-proxied URL
+       strip  — recovers the original URL from a proxied one
 
-     The pLoader (playlist loader) intercepts the raw manifest
-     TEXT before hls.js parses it.  We rewrite every relative URL
-     inside the manifest to a fully-qualified proxied URL.  By the
-     time hls.js reads the manifest it only sees absolute proxied
-     URLs, so every .ts, .key, and child .m3u8 request is already
-     correct — no xhrSetup needed.
+     WHY pLoader + fLoader (not xhrSetup):
+     ──────────────────────────────────────
+     xhrSetup fires AFTER hls.js has already resolved relative
+     segment paths using the proxy URL as the base — so
+     "segment001.ts" → "https://corsproxy.io/?segment001.ts" (broken).
+
+     With a custom pLoader we intercept the raw manifest TEXT,
+     resolve every relative path against the REAL stream origin,
+     then rewrite each one to a proxied absolute URL before hls.js
+     ever parses it.  Segments therefore arrive at fLoader already
+     correct; fLoader is a safety net for any edge-case URL.
      ══════════════════════════════════════════════════════════ */
 
   const PROXIES = [
-    'https://corsproxy.io/?url=',          /* primary  */
-    'https://api.allorigins.win/raw?url=', /* fallback */
+    {
+      name:   'corsproxy.io',
+      build:  url => 'https://corsproxy.io/?' + url,
+      prefix: 'https://corsproxy.io/?',
+      strip:  url => url.slice('https://corsproxy.io/?'.length),
+    },
+    {
+      name:   'allorigins',
+      build:  url => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
+      prefix: 'https://api.allorigins.win/raw?url=',
+      strip:  url => decodeURIComponent(url.slice('https://api.allorigins.win/raw?url='.length)),
+    },
+    {
+      name:   'cors-anywhere',
+      build:  url => 'https://cors-anywhere.herokuapp.com/' + url,
+      prefix: 'https://cors-anywhere.herokuapp.com/',
+      strip:  url => url.slice('https://cors-anywhere.herokuapp.com/'.length),
+    },
   ];
 
-  /* Wrap a URL with the currently-active proxy */
-  function proxify(url) {
-    if (!url) return url;
-    /* Skip if already wrapped by one of our proxies */
-    if (PROXIES.some(p => url.startsWith(p))) return url;
-    const wrapped = PROXIES[activeProxy] + encodeURIComponent(url);
-    console.log('[Dreed PROXY]', wrapped);
-    return wrapped;
+  /* Is the URL already wrapped by one of our proxies? */
+  function isProxied(url) {
+    return PROXIES.some(p => url.startsWith(p.prefix));
   }
 
-  /* Recover the original URL from a proxied one */
+  /* Wrap url with the currently-active proxy + log to console */
+  function proxify(url) {
+    if (!url || isProxied(url)) return url;
+    const p      = PROXIES[proxyIndex];
+    const result = p.build(url);
+    console.log(
+      `%c[Dreed][Proxy ${proxyIndex + 1}/${PROXIES.length}: ${p.name}]%c ${result}`,
+      'color:#ff0000;font-weight:bold', 'color:#ccc'
+    );
+    return result;
+  }
+
+  /* Recover the original URL from whichever proxy wrapped it */
   function unproxify(url) {
     for (const p of PROXIES) {
-      if (url.startsWith(p)) {
-        return decodeURIComponent(url.slice(p.length));
-      }
+      if (url.startsWith(p.prefix)) return p.strip(url);
     }
     return url;
   }
 
-  /* ── MANIFEST REWRITER ──────────────────────────────────── */
-  /*
-   * After the manifest text is fetched we parse it line-by-line.
-   * Any line that is a URL (not a # comment, not blank) is
-   * converted to an absolute URL using the manifest's true origin
-   * as the base, then wrapped with the proxy.
-   *
-   * URI="..." attributes inside HLS tags (e.g. #EXT-X-KEY,
-   * #EXT-X-MAP) are handled the same way via a regex pass.
-   */
+
+  /* ══════════════════════════════════════════════════════════
+     MANIFEST REWRITER
+     ──────────────────────────────────────────────────────────
+     After fetching the .m3u8 text we:
+       1. Rewrite URI="..." attributes (#EXT-X-KEY, #EXT-X-MAP…)
+       2. Rewrite bare URL lines (segments, child playlists)
+     All relative paths are resolved to absolute first using
+     the REAL stream origin as the base (never the proxy URL).
+     ══════════════════════════════════════════════════════════ */
+
   function toAbsolute(href, base) {
     if (!href) return href;
-    if (/^https?:\/\//i.test(href)) return href;          /* already absolute */
+    if (/^https?:\/\//i.test(href)) return href;       /* already absolute */
     if (href.startsWith('//'))       return 'https:' + href;
-    /* relative path → resolve against the manifest's directory */
     const dir = base.substring(0, base.lastIndexOf('/') + 1);
-    return dir + href;
+    return dir + href;                                 /* relative → absolute */
   }
 
   function rewriteManifest(text, manifestUrl) {
-    /* manifestUrl is the ORIGINAL stream URL (not the proxied one) */
-    console.log('[Dreed] Rewriting manifest. Base:', manifestUrl);
-
-    return text
-      /* Step 1 – rewrite URI="..." inside HLS tags */
-      .replace(/URI="([^"]+)"/g, (_m, uri) => {
-        const abs = toAbsolute(uri, manifestUrl);
-        return 'URI="' + proxify(abs) + '"';
-      })
-      /* Step 2 – rewrite bare URL lines (non-comment, non-blank) */
-      .split('\n')
-      .map(line => {
-        const t = line.trim();
-        if (!t || t.startsWith('#')) return line;
-        const abs = toAbsolute(t, manifestUrl);
-        return proxify(abs);
-      })
-      .join('\n');
+    console.log(
+      `%c[Dreed] Rewriting manifest%c  base: ${manifestUrl}`,
+      'color:#ff6600;font-weight:bold', 'color:#ccc'
+    );
+    return (
+      text
+        /* Pass 1 — URI="..." attributes inside HLS tags */
+        .replace(/URI="([^"]+)"/g, (_m, uri) =>
+          'URI="' + proxify(toAbsolute(uri, manifestUrl)) + '"'
+        )
+        /* Pass 2 — bare URL lines (segments / child playlists) */
+        .split('\n')
+        .map(line => {
+          const t = line.trim();
+          if (!t || t.startsWith('#')) return line;
+          return proxify(toAbsolute(t, manifestUrl));
+        })
+        .join('\n')
+    );
   }
 
-  /* ── CUSTOM PLAYLIST LOADER ─────────────────────────────── */
-  /*
-   * hls.js calls pLoader for every .m3u8 request (master manifest,
-   * rendition playlists, live refreshes).  We:
-   *   1. Store the true origin URL before proxying.
-   *   2. Proxy the fetch URL.
-   *   3. After a successful fetch, rewrite all URLs in the text.
-   *   4. On failure, switch to the fallback proxy and retry once.
-   */
+
+  /* ══════════════════════════════════════════════════════════
+     CUSTOM LOADERS
+     ══════════════════════════════════════════════════════════ */
+
+  /* pLoader — called for every .m3u8 request */
   function buildPlaylistLoader() {
     const Base = Hls.DefaultConfig.loader;
-
     return class DreedPlaylistLoader extends Base {
       load(context, config, callbacks) {
-        /* The URL hls.js hands us may already be proxied (sub-playlists
-           rewritten in step 2 of a previous manifest).  Recover the real URL. */
-        const trueUrl   = unproxify(context.url);
-        context.url     = proxify(trueUrl);
+        /* context.url may already be proxied (sub-playlists rewritten
+           in a previous manifest pass). Recover the real URL first. */
+        const trueUrl = unproxify(context.url);
+        context.url   = proxify(trueUrl);
 
         const origSuccess = callbacks.onSuccess;
-        const origError   = callbacks.onError;
-
         callbacks.onSuccess = (response, stats, ctx, networkDetails) => {
           if (typeof response.data === 'string') {
             response.data = rewriteManifest(response.data, trueUrl);
@@ -146,40 +174,14 @@
           origSuccess(response, stats, ctx, networkDetails);
         };
 
-        /* On error, flip to the fallback proxy and retry once */
-        callbacks.onError = (error, ctx, networkDetails) => {
-          if (activeProxy === 0) {
-            console.warn('[Dreed] Primary proxy failed — retrying with fallback proxy');
-            activeProxy    = 1;
-            ctx.url        = proxify(trueUrl);
-            /* Retry via a fresh base-class instance */
-            const retry = new Base();
-            retry.load(ctx, config, {
-              onSuccess: callbacks.onSuccess,
-              onError:   origError,
-              onTimeout: callbacks.onTimeout,
-            });
-          } else {
-            origError(error, ctx, networkDetails);
-          }
-        };
-
         super.load(context, config, callbacks);
       }
     };
   }
 
-  /* ── CUSTOM FRAGMENT LOADER ─────────────────────────────── */
-  /*
-   * hls.js calls fLoader for every .ts / .aac / .mp4 segment.
-   * Because we already pre-proxied segment URLs inside the manifest,
-   * most will arrive here already wrapped.  The guard in proxify()
-   * prevents double-wrapping.  Any edge-case absolute URL that slipped
-   * through still gets proxied here.
-   */
+  /* fLoader — called for every .ts / .aac / .mp4 segment */
   function buildFragmentLoader() {
     const Base = Hls.DefaultConfig.loader;
-
     return class DreedFragmentLoader extends Base {
       load(context, config, callbacks) {
         const trueUrl = unproxify(context.url);
@@ -205,7 +207,7 @@
 
   retryBtn.addEventListener('click', () => {
     hideError();
-    activeProxy = 0; /* reset to primary proxy on manual retry */
+    proxyIndex = 0;   /* restart waterfall from the top */
     destroyPlayer();
     initPlayer();
   });
@@ -215,9 +217,19 @@
      TEARDOWN
      ══════════════════════════════════════════════════════════ */
 
+  function destroyHLS() {
+    if (hlsInstance) {
+      try { hlsInstance.destroy(); } catch (_) {}
+      hlsInstance = null;
+    }
+  }
+
   function destroyPlayer() {
-    if (hlsInstance) { try { hlsInstance.destroy(); } catch (_) {} hlsInstance = null; }
-    if (plyrInstance) { try { plyrInstance.destroy(); } catch (_) {} plyrInstance = null; }
+    destroyHLS();
+    if (plyrInstance) {
+      try { plyrInstance.destroy(); } catch (_) {}
+      plyrInstance = null;
+    }
   }
 
 
@@ -239,7 +251,7 @@
 
 
   /* ══════════════════════════════════════════════════════════
-     PLYR INITIALISATION
+     PLYR INITIALISATION (created once, reused across retries)
      ══════════════════════════════════════════════════════════ */
 
   function createPlyr() {
@@ -264,6 +276,7 @@
         enableCaptions: 'Enable subtitles', disableCaptions: 'Disable subtitles',
       },
     });
+    plyrInstance.on('error', () => showError());
     return plyrInstance;
   }
 
@@ -303,69 +316,114 @@
     const isHLS = /\.m3u8(\?|$)/i.test(videoSrc);
 
     if (isHLS && typeof Hls !== 'undefined' && Hls.isSupported()) {
-      initHLS();
+      initHLS(0);  /* start waterfall at proxy 0 */
     } else if (isHLS && videoEl.canPlayType('application/vnd.apple.mpegurl')) {
-      /* Native HLS — Safari / iOS WebView (no CORS issue, no proxy needed) */
+      /* Native HLS — Safari / iOS WebView (CORS is not an issue here) */
       videoEl.src = videoSrc;
-      createPlyr();
-      attachErrorHandlers();
+      if (!plyrInstance) createPlyr();
     } else {
       initMP4();
     }
   }
 
-  /* ── HLS.JS PATH ──────────────────────────────────────────── */
-  function initHLS() {
+
+  /* ══════════════════════════════════════════════════════════
+     HLS PROXY WATERFALL
+     ──────────────────────────────────────────────────────────
+     initHLS(attempt) — tries PROXIES[attempt].
+     On any load error or fatal error, calls initHLS(attempt+1).
+     When attempts are exhausted, shows the error overlay.
+     ══════════════════════════════════════════════════════════ */
+
+  function initHLS(attempt) {
+    if (attempt >= PROXIES.length) {
+      console.error('%c[Dreed] All proxies exhausted. Showing error overlay.',
+        'color:#ff0000;font-weight:bold');
+      showError();
+      return;
+    }
+
+    proxyIndex = attempt;
+    const proxy = PROXIES[attempt];
+
+    console.info(
+      `%c[Dreed] Attempt ${attempt + 1}/${PROXIES.length} — proxy: ${proxy.name}`,
+      'background:#1a0000;color:#ff6600;font-weight:bold;padding:2px 6px;border-radius:3px'
+    );
+
+    /* Tear down any previous hls.js instance (keep Plyr alive) */
+    destroyHLS();
+
     hlsInstance = new Hls({
       startLevel:           -1,
       capLevelToPlayerSize: true,
       maxBufferLength:      30,
       maxMaxBufferLength:   60,
       enableWorker:         true,
-      /* Plug in our CORS-aware loaders */
-      pLoader: buildPlaylistLoader(),  /* handles all .m3u8 requests  */
-      fLoader: buildFragmentLoader(),  /* handles all segment requests */
+      /* Our CORS-aware custom loaders */
+      pLoader: buildPlaylistLoader(),
+      fLoader: buildFragmentLoader(),
     });
 
-    hlsInstance.loadSource(videoSrc); /* proxify() called inside pLoader */
+    /* Pass the raw videoSrc — proxify() is called inside pLoader */
+    hlsInstance.loadSource(videoSrc);
     hlsInstance.attachMedia(videoEl);
 
-    const plyr = createPlyr();
-    syncHLSQuality(hlsInstance, plyr);
+    /* Create Plyr only on the very first attempt */
+    if (!plyrInstance) createPlyr();
+
+    /* Re-wire quality sync to this hls instance */
+    syncHLSQuality(hlsInstance, plyrInstance);
+
+    /* ── Error → switch proxy ─────────────────────────────── */
+    let switched = false; /* guard: only switch once per attempt */
 
     hlsInstance.on(Hls.Events.ERROR, (_e, data) => {
-      if (!data.fatal) return;
-      console.error('[Dreed] HLS fatal error —', data.type, data.details);
+      /* Always log every error with type + details */
+      console.warn(
+        `%c[Dreed][${proxy.name}]%c type=${data.type} | detail=${data.details} | fatal=${data.fatal}`,
+        'color:#ff0000;font-weight:bold', 'color:#aaa'
+      );
 
-      if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-        /* Attempt hls.js internal recovery first */
-        hlsInstance.startLoad();
-        setTimeout(() => { if (videoEl.readyState === 0) showError(); }, 8000);
-      } else {
-        showError();
+      /* Trigger a proxy switch on these specific recoverable errors… */
+      const switchWorthy =
+        data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR   ||
+        data.details === Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT ||
+        data.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR||
+        data.details === Hls.ErrorDetails.LEVEL_LOAD_ERROR      ||
+        data.details === Hls.ErrorDetails.LEVEL_LOAD_TIMEOUT    ||
+        data.details === Hls.ErrorDetails.FRAG_LOAD_ERROR       ||
+        data.details === Hls.ErrorDetails.FRAG_LOAD_TIMEOUT     ||
+        data.fatal; /* …or on any fatal error */
+
+      if (switchWorthy && !switched) {
+        switched = true;
+        const next = attempt + 1;
+        if (next < PROXIES.length) {
+          console.warn(
+            `%c[Dreed] Proxy ${attempt + 1} (${proxy.name}) failed → switching to proxy ${next + 1} (${PROXIES[next].name})`,
+            'color:#ff6600;font-weight:bold'
+          );
+          /* Small delay so hls.js settles before we destroy it */
+          setTimeout(() => initHLS(next), 400);
+        } else {
+          console.error('%c[Dreed] All proxies failed.', 'color:#ff0000;font-weight:bold');
+          showError();
+        }
       }
     });
-
-    attachErrorHandlers();
   }
+
 
   /* ── MP4 / WebM PATH ─────────────────────────────────────── */
   function initMP4() {
     videoEl.src  = videoSrc;
     videoEl.type = /\.webm(\?|$)/i.test(videoSrc) ? 'video/webm' : 'video/mp4';
-    createPlyr();
-    attachErrorHandlers();
-  }
-
-  /* ── ERROR HANDLERS ───────────────────────────────────────── */
-  function attachErrorHandlers() {
+    if (!plyrInstance) createPlyr();
     videoEl.addEventListener('error', () => {
-      console.error('[Dreed] Video element error');
+      console.error('[Dreed] Video element error (MP4)');
       showError();
     });
-    if (plyrInstance) {
-      plyrInstance.on('error', () => showError());
-    }
   }
 
 
@@ -374,7 +432,13 @@
      ══════════════════════════════════════════════════════════ */
   initPlayer();
 
-  window._dreedPlayer = () => ({ plyr: plyrInstance, hls: hlsInstance });
+  /* Expose internals for browser console debugging */
+  window._dreedPlayer = () => ({
+    plyr:       plyrInstance,
+    hls:        hlsInstance,
+    proxyIndex: proxyIndex,
+    proxy:      PROXIES[proxyIndex],
+  });
 
   console.info(
     '%c Dreed Player %c Plyr + hls.js ',
