@@ -40,6 +40,31 @@
   let plyrInstance = null;
   let hlsInstance  = null;
 
+  /* ── CORS PROXY ─────────────────────────────────────────── */
+  /*
+   * hls.js resolves every relative .ts / .key / .m3u8 segment URL
+   * to an absolute URL before making the XHR.  By intercepting ALL
+   * requests via xhrSetup (not just the initial manifest URL), every
+   * segment goes through the proxy — so relative-path chunks never
+   * break after the first few seconds.
+   *
+   * Primary  : corsproxy.io  (reliable, handles binary TS chunks)
+   * Fallback : allorigins    (used automatically on primary failure)
+   */
+  const PROXY_PRIMARY  = 'https://corsproxy.io/?url=';
+  const PROXY_FALLBACK = 'https://api.allorigins.win/raw?url=';
+
+  /* Returns true if the URL already contains a known proxy prefix */
+  function isAlreadyProxied(url) {
+    return url.startsWith(PROXY_PRIMARY) || url.startsWith(PROXY_FALLBACK);
+  }
+
+  /* Wraps any URL with the primary proxy (percent-encodes the target) */
+  function proxify(url) {
+    if (isAlreadyProxied(url)) return url;
+    return PROXY_PRIMARY + encodeURIComponent(url);
+  }
+
 
   /* ══════════════════════════════════════════════════════════
      ERROR OVERLAY
@@ -222,9 +247,23 @@
       maxBufferLength:      30,
       maxMaxBufferLength:   60,
       enableWorker:         true,
+
+      /*
+       * xhrSetup is called by hls.js before EVERY request it makes
+       * (the .m3u8 manifest, every .ts video segment, every .key
+       * encryption file, and any child playlists for multi-bitrate).
+       *
+       * At this point hls.js has already resolved all relative paths
+       * inside the manifest into absolute URLs, so wrapping the URL
+       * here is safe — chunks will never 404 due to a broken base path.
+       */
+      xhrSetup: function (xhr, url) {
+        xhr.open('GET', proxify(url), true);
+      },
     });
 
-    hlsInstance.loadSource(videoSrc);
+    /* Also proxy the initial manifest URL passed to loadSource */
+    hlsInstance.loadSource(proxify(videoSrc));
     hlsInstance.attachMedia(videoEl);
 
     const plyr = createPlyr();
