@@ -328,86 +328,101 @@
 
 
   /* ══════════════════════════════════════════════════════════
-     HLS PROXY WATERFALL
+     HLS LOAD WATERFALL
      ──────────────────────────────────────────────────────────
-     initHLS(attempt) — tries PROXIES[attempt].
-     On any load error or fatal error, calls initHLS(attempt+1).
-     When attempts are exhausted, shows the error overlay.
+     attempt 0              → direct load  (no proxy, no custom loaders)
+     attempt 1 … PROXIES.length → PROXIES[attempt-1] (proxy waterfall)
+
+     Sequence triggered by MANIFEST/LEVEL/FRAG load errors or any
+     fatal hls.js error.  Plyr is created once and kept alive across
+     all attempts so the UI never flickers.
      ══════════════════════════════════════════════════════════ */
 
+  const TOTAL_ATTEMPTS = 1 + PROXIES.length; /* direct + 3 proxies = 4 */
+
   function initHLS(attempt) {
-    if (attempt >= PROXIES.length) {
-      console.error('%c[Dreed] All proxies exhausted. Showing error overlay.',
+    if (attempt >= TOTAL_ATTEMPTS) {
+      console.error('%c[Dreed] All attempts exhausted. Showing error overlay.',
         'color:#ff0000;font-weight:bold');
       showError();
       return;
     }
 
-    proxyIndex = attempt;
-    const proxy = PROXIES[attempt];
+    /* ── Resolve label + proxy for this attempt ─────────────── */
+    const isDirect  = attempt === 0;
+    const label     = isDirect
+      ? 'direct (no proxy)'
+      : `proxy: ${PROXIES[attempt - 1].name}`;
 
     console.info(
-      `%c[Dreed] Attempt ${attempt + 1}/${PROXIES.length} — proxy: ${proxy.name}`,
+      `%c[Dreed] Attempt ${attempt + 1}/${TOTAL_ATTEMPTS} — ${label}`,
       'background:#1a0000;color:#ff6600;font-weight:bold;padding:2px 6px;border-radius:3px'
     );
 
-    /* Tear down any previous hls.js instance (keep Plyr alive) */
+    /* ── Tear down previous hls.js instance; keep Plyr alive ── */
     destroyHLS();
 
-    hlsInstance = new Hls({
+    /* ── Build Hls config ───────────────────────────────────── */
+    const hlsConfig = {
       startLevel:           -1,
       capLevelToPlayerSize: true,
       maxBufferLength:      30,
       maxMaxBufferLength:   60,
       enableWorker:         true,
-      /* Our CORS-aware custom loaders */
-      pLoader: buildPlaylistLoader(),
-      fLoader: buildFragmentLoader(),
-    });
+    };
 
-    /* Pass the raw videoSrc — proxify() is called inside pLoader */
+    if (!isDirect) {
+      /* Set the active proxy index so proxify() uses the right one */
+      proxyIndex = attempt - 1;
+      hlsConfig.pLoader = buildPlaylistLoader();
+      hlsConfig.fLoader = buildFragmentLoader();
+    }
+
+    hlsInstance = new Hls(hlsConfig);
+
+    /* Direct: pass raw videoSrc.  Proxied: pLoader wraps it inside. */
     hlsInstance.loadSource(videoSrc);
     hlsInstance.attachMedia(videoEl);
 
-    /* Create Plyr only on the very first attempt */
+    /* Create Plyr only once */
     if (!plyrInstance) createPlyr();
 
-    /* Re-wire quality sync to this hls instance */
+    /* Re-wire quality sync to this fresh hls instance */
     syncHLSQuality(hlsInstance, plyrInstance);
 
-    /* ── Error → switch proxy ─────────────────────────────── */
-    let switched = false; /* guard: only switch once per attempt */
+    /* ── Error handler — advance to next attempt ────────────── */
+    let switched = false; /* fire only once per attempt */
 
     hlsInstance.on(Hls.Events.ERROR, (_e, data) => {
-      /* Always log every error with type + details */
       console.warn(
-        `%c[Dreed][${proxy.name}]%c type=${data.type} | detail=${data.details} | fatal=${data.fatal}`,
+        `%c[Dreed][${label}]%c type=${data.type} | detail=${data.details} | fatal=${data.fatal}`,
         'color:#ff0000;font-weight:bold', 'color:#aaa'
       );
 
-      /* Trigger a proxy switch on these specific recoverable errors… */
-      const switchWorthy =
-        data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR   ||
-        data.details === Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT ||
-        data.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR||
-        data.details === Hls.ErrorDetails.LEVEL_LOAD_ERROR      ||
-        data.details === Hls.ErrorDetails.LEVEL_LOAD_TIMEOUT    ||
-        data.details === Hls.ErrorDetails.FRAG_LOAD_ERROR       ||
-        data.details === Hls.ErrorDetails.FRAG_LOAD_TIMEOUT     ||
-        data.fatal; /* …or on any fatal error */
+      const shouldAdvance =
+        data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR    ||
+        data.details === Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT  ||
+        data.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR ||
+        data.details === Hls.ErrorDetails.LEVEL_LOAD_ERROR       ||
+        data.details === Hls.ErrorDetails.LEVEL_LOAD_TIMEOUT     ||
+        data.details === Hls.ErrorDetails.FRAG_LOAD_ERROR        ||
+        data.details === Hls.ErrorDetails.FRAG_LOAD_TIMEOUT      ||
+        data.fatal;
 
-      if (switchWorthy && !switched) {
-        switched = true;
+      if (shouldAdvance && !switched) {
+        switched   = true;
         const next = attempt + 1;
-        if (next < PROXIES.length) {
+        if (next < TOTAL_ATTEMPTS) {
+          const nextLabel = next === 1
+            ? PROXIES[0].name
+            : PROXIES[next - 1].name;
           console.warn(
-            `%c[Dreed] Proxy ${attempt + 1} (${proxy.name}) failed → switching to proxy ${next + 1} (${PROXIES[next].name})`,
+            `%c[Dreed] ${label} failed → trying ${next === 1 ? 'proxy' : 'next proxy'}: ${nextLabel}`,
             'color:#ff6600;font-weight:bold'
           );
-          /* Small delay so hls.js settles before we destroy it */
           setTimeout(() => initHLS(next), 400);
         } else {
-          console.error('%c[Dreed] All proxies failed.', 'color:#ff0000;font-weight:bold');
+          console.error('%c[Dreed] All attempts failed.', 'color:#ff0000;font-weight:bold');
           showError();
         }
       }
