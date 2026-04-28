@@ -11,7 +11,6 @@
 
 /* ── DESIGN TOKENS ─────────────────────────────────────────── */
 :root {
-  /* Plyr theming — override Plyr's built-in CSS variables */
   --plyr-color-main:                    #ff0000;
   --plyr-video-background:              #000;
   --plyr-font-family:                   'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -21,161 +20,99 @@
   --plyr-font-size-menu:                14px;
   --plyr-font-weight-regular:           500;
   --plyr-font-weight-bold:              700;
-
-  /* Control bar gradient */
   --plyr-video-controls-background:
     linear-gradient(rgba(0,0,0,0) 0%, rgba(0,0,0,0.88) 100%);
   --plyr-control-spacing:               12px;
   --plyr-control-radius:                6px;
   --plyr-control-icon-size:             20px;
-
-  /* Seek / volume range */
   --plyr-range-fill-background:         #ff0000;
   --plyr-range-thumb-background:        #fff;
   --plyr-range-thumb-height:            14px;
   --plyr-range-thumb-shadow:            0 0 6px rgba(255,0,0,0.6);
-
-  /* Tooltip */
   --plyr-tooltip-background:            rgba(10, 0, 0, 0.92);
   --plyr-tooltip-color:                 #fff;
   --plyr-tooltip-padding:               4px 10px;
   --plyr-tooltip-radius:                6px;
   --plyr-tooltip-shadow:                0 4px 16px rgba(0,0,0,0.6);
-
-  /* Settings menu */
   --plyr-menu-background:               rgba(10, 0, 0, 0.96);
   --plyr-menu-color:                    rgba(255,255,255,0.85);
   --plyr-menu-shadow:                   0 8px 32px rgba(0,0,0,0.85);
   --plyr-menu-radius:                   10px;
-
-  /* Captions */
   --plyr-captions-background:           rgba(0,0,0,0.75);
   --plyr-captions-text-color:           #fff;
-
-  /* Dreed brand tokens */
   --dreed-accent:       #ff0000;
   --dreed-accent-dim:   #cc0000;
   --dreed-accent-glow:  rgba(255, 0, 0, 0.5);
 }
 
-
 /* ── RESET ──────────────────────────────────────────────────── */
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-
-/* ── BASE — full viewport, zero scroll ──────────────────────── */
+/* ── BASE ───────────────────────────────────────────────────── */
 html, body {
-  width: 100%;
-  height: 100%;
+  width: 100%; height: 100%;
   overflow: hidden;
   background: #000;
   font-family: var(--plyr-font-family);
 }
 
-/* Wrapper: fixed, full screen */
 .dreed-wrap {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
   background: #000;
 }
 
-/* Plyr fills the wrapper */
-.dreed-wrap .plyr {
-  width: 100%;
-  height: 100%;
-  max-width: 100%;
-  border-radius: 0;
-}
+.dreed-wrap .plyr { width: 100%; height: 100%; max-width: 100%; border-radius: 0; }
+.dreed-wrap .plyr video { width: 100%; height: 100%; object-fit: contain; background: #000; }
 
-.dreed-wrap .plyr video {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  background: #000;
-}
-
-
-/* ── SEEK BAR — glowing red fill ────────────────────────────── */
+/* ── SEEK BAR ───────────────────────────────────────────────── */
 .plyr__progress input[type='range']::-webkit-slider-thumb {
-  box-shadow:
-    0 0 0 3px rgba(255,0,0,0.22),
-    0 0 12px rgba(255,0,0,0.55);
+  box-shadow: 0 0 0 3px rgba(255,0,0,0.22), 0 0 12px rgba(255,0,0,0.55);
 }
 .plyr__volume input[type='range']::-webkit-slider-thumb {
   box-shadow: 0 0 8px rgba(255,0,0,0.45);
 }
 
-
 /* ── LARGE PLAY BUTTON ──────────────────────────────────────── */
 .plyr__control--overlaid {
   background: var(--dreed-accent) !important;
-  box-shadow:
-    0 0 0 8px rgba(255,0,0,0.18),
-    0 0 40px rgba(255,0,0,0.45),
-    0 16px 48px rgba(0,0,0,0.6) !important;
+  box-shadow: 0 0 0 8px rgba(255,0,0,0.18), 0 0 40px rgba(255,0,0,0.45), 0 16px 48px rgba(0,0,0,0.6) !important;
   padding: 20px !important;
 }
 .plyr__control--overlaid:hover,
 .plyr__control--overlaid:focus {
   background: var(--dreed-accent-dim) !important;
-  box-shadow:
-    0 0 0 14px rgba(255,0,0,0.14),
-    0 0 60px rgba(255,0,0,0.6),
-    0 20px 56px rgba(0,0,0,0.65) !important;
+  box-shadow: 0 0 0 14px rgba(255,0,0,0.14), 0 0 60px rgba(255,0,0,0.6), 0 20px 56px rgba(0,0,0,0.65) !important;
   transform: scale(1.08);
 }
-.plyr__control--overlaid svg {
-  width: 28px !important;
-  height: 28px !important;
-}
+.plyr__control--overlaid svg { width: 28px !important; height: 28px !important; }
 
-
-/* ── CONTROL BAR BUTTONS ────────────────────────────────────── */
+/* ── CONTROL BUTTONS ────────────────────────────────────────── */
 .plyr__controls .plyr__control[aria-pressed='true'],
 .plyr__controls .plyr__control.plyr__tab-focus,
 .plyr__controls .plyr__control:hover {
   background: rgba(255, 0, 0, 0.18) !important;
   color: #fff !important;
 }
-
 .plyr__controls .plyr__control[data-plyr='captions'][aria-pressed='true'] {
   color: var(--dreed-accent) !important;
 }
-
 
 /* ── SETTINGS MENU ──────────────────────────────────────────── */
 .plyr__menu__container {
   background: rgba(10, 0, 0, 0.97) !important;
   border: 1px solid rgba(255,0,0,0.2) !important;
-  box-shadow:
-    0 0 0 1px rgba(255,0,0,0.06),
-    0 12px 40px rgba(0,0,0,0.9) !important;
+  box-shadow: 0 0 0 1px rgba(255,0,0,0.06), 0 12px 40px rgba(0,0,0,0.9) !important;
 }
-
-.plyr__menu__container .plyr__control {
-  color: rgba(255,255,255,0.82) !important;
-}
-.plyr__menu__container .plyr__control[role='menuitemradio'][aria-checked='true'] {
-  color: var(--dreed-accent) !important;
-}
+.plyr__menu__container .plyr__control { color: rgba(255,255,255,0.82) !important; }
+.plyr__menu__container .plyr__control[role='menuitemradio'][aria-checked='true'] { color: var(--dreed-accent) !important; }
 .plyr__menu__container .plyr__control[role='menuitemradio'][aria-checked='true']::before {
   background: var(--dreed-accent) !important;
   box-shadow: 0 0 6px var(--dreed-accent) !important;
 }
 
-
 /* ── CAPTIONS ───────────────────────────────────────────────── */
-.plyr__captions {
-  font-size: clamp(14px, 2.2vw, 21px) !important;
-  font-weight: 500 !important;
-}
+.plyr__captions { font-size: clamp(14px, 2.2vw, 21px) !important; font-weight: 500 !important; }
 .plyr__caption {
   background: rgba(0,0,0,0.75) !important;
   border-radius: 5px !important;
@@ -184,20 +121,13 @@ html, body {
   text-shadow: 0 1px 6px rgba(0,0,0,0.95) !important;
 }
 
-
 /* ── ERROR OVERLAY ──────────────────────────────────────────── */
 .dreed-error {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 16px;
   background: rgba(5, 0, 0, 0.95);
-  text-align: center;
-  padding: 40px 32px;
+  text-align: center; padding: 40px 32px;
   animation: dreed-err-in 0.3s ease;
 }
 .dreed-error[hidden] { display: none; }
@@ -208,48 +138,28 @@ html, body {
 }
 
 .dreed-error svg {
-  width: 54px;
-  height: 54px;
+  width: 54px; height: 54px;
   color: var(--dreed-accent);
   filter: drop-shadow(0 0 12px var(--dreed-accent-glow));
   flex-shrink: 0;
 }
-
-.dreed-error-title {
-  font-size: 18px;
-  font-weight: 700;
-  color: #fff;
-  max-width: 340px;
-  line-height: 1.4;
-}
-
-.dreed-error-sub {
-  font-size: 13px;
-  color: rgba(255,255,255,0.44);
-  max-width: 300px;
-  line-height: 1.6;
-}
+.dreed-error-title { font-size: 18px; font-weight: 700; color: #fff; max-width: 340px; line-height: 1.4; }
+.dreed-error-sub { font-size: 13px; color: rgba(255,255,255,0.44); max-width: 300px; line-height: 1.6; }
 
 #dreed-retry {
-  margin-top: 4px;
-  padding: 11px 32px;
-  background: var(--dreed-accent);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 700;
+  margin-top: 4px; padding: 11px 32px;
+  background: var(--dreed-accent); color: #fff;
+  border: none; border-radius: 8px;
+  font-size: 14px; font-weight: 700;
   font-family: var(--plyr-font-family);
-  cursor: pointer;
-  letter-spacing: 0.04em;
+  cursor: pointer; letter-spacing: 0.04em;
   box-shadow: 0 0 24px var(--dreed-accent-glow);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 #dreed-retry:hover  { transform: scale(1.05); box-shadow: 0 0 40px var(--dreed-accent-glow); }
 #dreed-retry:active { transform: scale(0.96); }
 
-
-/* ── SAFE-AREA (iPhone notch / Dynamic Island) ──────────────── */
+/* ── SAFE-AREA ──────────────────────────────────────────────── */
 @supports (padding: max(0px)) {
   .plyr__controls {
     padding-bottom: max(var(--plyr-control-spacing), env(safe-area-inset-bottom)) !important;

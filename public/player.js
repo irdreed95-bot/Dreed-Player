@@ -1,5 +1,17 @@
 'use strict';
 
+/**
+ * Dreed Player — player.js
+ * ─────────────────────────────────────────────────────────────
+ * URL parameters:
+ *   ?video=  URL-encoded link to the video (MP4, WebM, or .m3u8)
+ *   ?sub=    URL-encoded link to a .vtt subtitle file (optional)
+ *
+ * HLS (.m3u8) streams are routed through the server-side proxy
+ * at /proxy?url=... which handles CORS and rewrites all segment
+ * URLs inside the manifest. MP4/WebM are loaded directly.
+ */
+
 (function () {
 
   /* ── DOM ────────────────────────────────────────────────── */
@@ -126,7 +138,7 @@
      ══════════════════════════════════════════════════════════ */
 
   function initPlayer() {
-    /* No ?video= param — leave the player blank */
+    /* No ?video= — show a blank player */
     if (!videoSrc) {
       createPlyr();
       return;
@@ -138,7 +150,15 @@
     const isHLS = /\.m3u8(\?|$)/i.test(videoSrc);
 
     if (isHLS && typeof Hls !== 'undefined' && Hls.isSupported()) {
-      /* hls.js path — Chrome, Firefox, etc. */
+      /*
+       * Route the HLS stream through the server-side proxy.
+       * The proxy fetches the manifest, rewrites every .ts and
+       * child .m3u8 URL to also go through /proxy?url=..., then
+       * returns it.  hls.js sees only same-origin URLs — no CORS.
+       */
+      const proxiedSrc = '/proxy?url=' + encodeURIComponent(videoSrc);
+      console.info('[Dreed] HLS via proxy →', proxiedSrc);
+
       hlsInstance = new Hls({
         startLevel:           -1,
         capLevelToPlayerSize: true,
@@ -147,24 +167,27 @@
         enableWorker:         true,
       });
 
-      hlsInstance.loadSource(videoSrc);
+      hlsInstance.loadSource(proxiedSrc);
       hlsInstance.attachMedia(videoEl);
 
       const plyr = createPlyr();
       syncHLSQuality(hlsInstance, plyr);
 
       hlsInstance.on(Hls.Events.ERROR, (_e, data) => {
+        console.warn(`[Dreed] HLS error — type: ${data.type} | detail: ${data.details} | fatal: ${data.fatal}`);
         if (data.fatal) showError();
       });
 
     } else if (isHLS && videoEl.canPlayType('application/vnd.apple.mpegurl')) {
       /* Native HLS — Safari / iOS WebView */
-      videoEl.src = videoSrc;
+      const proxiedSrc = '/proxy?url=' + encodeURIComponent(videoSrc);
+      videoEl.src = proxiedSrc;
       createPlyr();
       videoEl.addEventListener('error', () => showError());
 
     } else {
-      /* MP4 / WebM */
+      /* MP4 / WebM — loaded directly, CORS is not an issue for <video src> */
+      console.info('[Dreed] Direct load →', videoSrc);
       videoEl.src  = videoSrc;
       videoEl.type = /\.webm(\?|$)/i.test(videoSrc) ? 'video/webm' : 'video/mp4';
       createPlyr();
@@ -178,7 +201,7 @@
   window._dreedPlayer = () => ({ plyr: plyrInstance, hls: hlsInstance });
 
   console.info(
-    '%c Dreed Player %c Plyr + hls.js ',
+    '%c Dreed Player %c Plyr + hls.js + server proxy ',
     'background:#ff0000;color:#fff;font-weight:800;border-radius:4px 0 0 4px;padding:2px 8px',
     'background:#1a0000;color:#ff0000;font-weight:700;border-radius:0 4px 4px 0;padding:2px 8px'
   );

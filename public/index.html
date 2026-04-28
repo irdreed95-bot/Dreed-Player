@@ -27,13 +27,16 @@
   <!-- ── PLAYER WRAPPER ─────────────────────────────────────── -->
   <div class="dreed-wrap">
     <!--
-      data-src: default video when no ?video= param is in the URL.
-      Usage: /?video=https://example.com/movie.m3u8
-             /?video=https://example.com/movie.mp4&sub=https://example.com/subs.vtt
+      Usage:
+        /?video=https://example.com/stream.m3u8
+        /?video=https://example.com/movie.mp4&sub=https://example.com/subs.vtt
+
+      HLS streams are automatically routed through the server-side
+      proxy (/proxy?url=...) which handles CORS and rewrites segment URLs.
+      MP4 / WebM files are loaded directly by the browser.
     -->
     <video
       id="dreed-video"
-      data-src="https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8"
       playsinline
       crossorigin="anonymous"
     ></video>
