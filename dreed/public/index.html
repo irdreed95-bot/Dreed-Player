@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Dreed Player</title>
+
+  <!-- Plyr UI library CSS -->
+  <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+  <!-- Dreed theme overrides -->
+  <link rel="stylesheet" href="player.css" />
+</head>
+<body>
+
+  <!-- ── ERROR OVERLAY ──────────────────────────────────────── -->
+  <div id="dreed-error" class="dreed-error" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+    </svg>
+    <p class="dreed-error-title">Error loading the video from the server</p>
+    <p class="dreed-error-sub">The link may be unavailable or blocked. Check the URL and try again.</p>
+    <button id="dreed-retry">Retry</button>
+  </div>
+
+  <!-- ── PLAYER WRAPPER ─────────────────────────────────────── -->
+  <div class="dreed-wrap">
+    <!--
+      Usage:
+        /?video=https://example.com/stream.m3u8
+        /?video=https://example.com/movie.mp4&sub=https://example.com/subs.vtt
+
+      HLS streams are automatically routed through the server-side
+      proxy (/proxy?url=...) which handles CORS and rewrites segment URLs.
+      MP4 / WebM files are loaded directly by the browser.
+    -->
+    <video
+      id="dreed-video"
+      playsinline
+      crossorigin="anonymous"
+    ></video>
+  </div>
+
+  <!-- hls.js — handles .m3u8 adaptive streams -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
+  <!-- Plyr — UI controls -->
+  <script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
+  <!-- Dreed player logic -->
+  <script src="player.js"></script>
+</body>
+</html>
